@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"time"
 
 	"golang.org/x/term"
@@ -22,11 +23,16 @@ const helpText = `burning reports coding-agent subscription usage.
 
 Usage:
   burning [--json]
+  burning login
+  burning logout
 
 Flags:
   --json      print the report as JSON schema v1 instead of the human format
   --version   print the version and exit
   --help      show this help
+
+Login and logout select a provider interactively. Credentials are stored beside
+config.json with owner-only permissions.
 
 Exit codes:
   0  all providers reported usage (or none are configured)
@@ -43,6 +49,21 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	return runWithInput(ctx, args, os.Stdin, stdout, stderr)
+}
+
+func runWithInput(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "login":
+			return runLogin(ctx, args[1:], stdin, stdout, stderr)
+		case "logout":
+			return runLogout(ctx, args[1:], stdin, stdout, stderr)
+		}
+	}
+
 	fs := flag.NewFlagSet("burning", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, helpText) }
