@@ -30,11 +30,11 @@ func interactiveInput(t *testing.T, input string) *os.File {
 	return reader
 }
 
-func TestBrowserCommandUsesNativeWindowsHandlerInWSL(t *testing.T) {
+func TestBrowserCommandUsesXDGOpenInWSL(t *testing.T) {
 	t.Setenv("WSL_INTEROP", "enabled")
 	url := "https://example.com/?response_type=code&client_id=client"
 	command, args := browserCommand("linux", url)
-	if command != "rundll32.exe" || strings.Join(args, "|") != "url.dll,FileProtocolHandler|"+url {
+	if command != "xdg-open" || strings.Join(args, "|") != url {
 		t.Errorf("browser command = %q %q", command, args)
 	}
 }
