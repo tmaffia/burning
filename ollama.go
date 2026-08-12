@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"math"
 	"net/http"
 	"os"
 	"time"
@@ -94,11 +92,7 @@ func fetchOllamaUsage(ctx context.Context, key string) ([]usageWindow, error) {
 			} `json:"weekly"`
 		} `json:"limits"`
 	}
-	decoder := json.NewDecoder(res.Body)
-	if err := decoder.Decode(&response); err != nil {
-		return nil, ollamaFailure(ollamaMalformedResponseError, err)
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
 		return nil, ollamaFailure(ollamaMalformedResponseError, err)
 	}
 	if !validOllamaUsage(response.Limits.Session.Usage) || !validOllamaUsage(response.Limits.Weekly.Usage) {
@@ -111,7 +105,7 @@ func fetchOllamaUsage(ctx context.Context, key string) ([]usageWindow, error) {
 }
 
 func validOllamaUsage(value *float64) bool {
-	return value != nil && !math.IsNaN(*value) && !math.IsInf(*value, 0) && *value >= 0 && *value <= 1
+	return value != nil && *value >= 0 && *value <= 1
 }
 
 type ollamaError struct {
