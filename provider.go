@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -31,10 +32,15 @@ type usageWindow struct {
 	ResetsAt time.Time // zero if unknown
 }
 
-// provider reports Usage for one subscription service.
+// provider reports Usage for one subscription service and owns its complete
+// login flow.
 type provider interface {
 	Name() string
 	Usage(ctx context.Context) ([]usageWindow, error)
+	// login runs the provider's own credential flow — a browser OAuth
+	// exchange or a pasted-key prompt — and returns the JSON credential to
+	// store.
+	login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error)
 }
 
 // providerError is a Provider failure carrying a stable code alongside its
@@ -48,35 +54,58 @@ type providerError struct {
 func (e providerError) Error() string { return e.message }
 func (e providerError) Unwrap() error { return e.cause }
 
-// classifyHTTPStatus maps a non-2xx response status to the stable provider
-// error code shared by every provider's HTTP calls.
-func classifyHTTPStatus(status int, authCode, rateLimitCode, unavailableCode string) string {
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return authCode
-	case http.StatusTooManyRequests:
-		return rateLimitCode
+// providerErrorCategory is a stable failure category shared by every
+// provider; a provider's full error code is name + "_" + category.
+type providerErrorCategory string
+
+const (
+	categoryAuthentication    providerErrorCategory = "authentication"
+	categoryTimeout           providerErrorCategory = "timeout"
+	categoryRateLimited       providerErrorCategory = "rate_limited"
+	categoryUnavailable       providerErrorCategory = "unavailable"
+	categoryMalformedResponse providerErrorCategory = "malformed_response"
+)
+
+// providerErrorCode derives a provider's stable error code, e.g.
+// "ollama_authentication".
+func providerErrorCode(provider string, category providerErrorCategory) string {
+	return provider + "_" + string(category)
+}
+
+// providerErrorMessage returns the human-readable message for a shared
+// category, matching the prose contract every provider's errors use.
+func providerErrorMessage(category providerErrorCategory) string {
+	switch category {
+	case categoryAuthentication:
+		return "authentication failed"
+	case categoryTimeout:
+		return fmt.Sprintf("timeout after %s", fetchTimeout)
+	case categoryRateLimited:
+		return "rate limited"
+	case categoryUnavailable:
+		return "unavailable"
+	case categoryMalformedResponse:
+		return "malformed response"
 	default:
-		return unavailableCode
+		return string(category)
 	}
 }
 
-// credentialLoginProvider completes a provider-specific credential flow,
-// such as OAuth, instead of prompting for a pasted Credential.
-type credentialLoginProvider interface {
-	login(ctx context.Context, stdout io.Writer) (json.RawMessage, error)
+func providerFailure(provider string, category providerErrorCategory, cause error) error {
+	return providerError{code: providerErrorCode(provider, category), message: providerErrorMessage(category), cause: cause}
 }
 
-// loginPreparer lets a provider run a step before its credential prompt,
-// such as opening a page to obtain a credential.
-type loginPreparer interface {
-	prepareLogin(stdout io.Writer) error
-}
-
-// loginVerifier lets a provider validate a newly entered credential before
-// it's stored.
-type loginVerifier interface {
-	verifyLogin(ctx context.Context, value json.RawMessage) error
+// classifyHTTPStatus maps a non-2xx response status to the shared error
+// category used by every provider's HTTP calls.
+func classifyHTTPStatus(status int) providerErrorCategory {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return categoryAuthentication
+	case http.StatusTooManyRequests:
+		return categoryRateLimited
+	default:
+		return categoryUnavailable
+	}
 }
 
 // registry maps configured provider names to implementations.

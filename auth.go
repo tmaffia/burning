@@ -25,11 +25,11 @@ func credential(provider string) (json.RawMessage, bool, error) {
 	if provider == "" {
 		return nil, false, errors.New("auth: provider is required")
 	}
-	path, err := authPath()
+	dir, err := authDirectory()
 	if err != nil {
 		return nil, false, err
 	}
-	auth, err := readAuth(path)
+	auth, err := readAuth(filepath.Join(dir, authFileName))
 	if err != nil {
 		return nil, false, err
 	}
@@ -97,15 +97,6 @@ func authDirectory() (string, error) {
 		return "", fmt.Errorf("auth: config directory: %w", err)
 	}
 	return filepath.Join(base, "burning"), nil
-}
-
-// authPath resolves the credential file without creating anything.
-func authPath() (string, error) {
-	dir, err := authDirectory()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, authFileName), nil
 }
 
 // lockAuth creates the owner-only config directory, takes the exclusive lock,

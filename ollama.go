@@ -11,15 +11,7 @@ import (
 	"time"
 )
 
-const (
-	ollamaAPIKeysURL = "https://ollama.com/settings/keys"
-
-	ollamaAuthenticationError    = "ollama_authentication"
-	ollamaTimeoutError           = "ollama_timeout"
-	ollamaRateLimitedError       = "ollama_rate_limited"
-	ollamaUnavailableError       = "ollama_unavailable"
-	ollamaMalformedResponseError = "ollama_malformed_response"
-)
+const ollamaAPIKeysURL = "https://ollama.com/settings/keys"
 
 var ollamaUsageURL = "https://ollama.com/api/usage"
 
@@ -35,24 +27,27 @@ func (ollamaProvider) Usage(ctx context.Context) ([]usageWindow, error) {
 	return fetchOllamaUsage(ctx, secret)
 }
 
-// prepareLogin opens Ollama Cloud's API-key page before the credential prompt.
-func (ollamaProvider) prepareLogin(stdout io.Writer) error {
+// login opens Ollama Cloud's API-key page, prompts for the key, and verifies
+// it against the usage endpoint before it's stored.
+func (ollamaProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	fmt.Fprintf(stdout, "Opening %s\n", ollamaAPIKeysURL)
 	if err := openURL(ollamaAPIKeysURL); err != nil {
-		return errors.New("could not open Ollama Cloud API-key page")
+		return nil, errors.New("could not open Ollama Cloud API-key page")
 	}
-	return nil
-}
-
-// verifyLogin checks a newly entered credential against the usage endpoint
-// before it's stored.
-func (ollamaProvider) verifyLogin(ctx context.Context, value json.RawMessage) error {
+	value, err := readSecret(stdin, stdout)
+	if err != nil {
+		return nil, err
+	}
 	secret, err := ollamaCredentialSecret(value)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = fetchOllamaUsage(ctx, secret)
-	return err
+	verifyCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	if _, err := fetchOllamaUsage(verifyCtx, secret); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 func ollamaCredential() (string, error) {
@@ -61,7 +56,7 @@ func ollamaCredential() (string, error) {
 	}
 	value, ok, err := credential("ollama")
 	if err != nil || !ok {
-		return "", ollamaFailure(ollamaAuthenticationError, err)
+		return "", providerFailure("ollama", categoryAuthentication, err)
 	}
 	return ollamaCredentialSecret(value)
 }
@@ -71,7 +66,7 @@ func ollamaCredentialSecret(value json.RawMessage) (string, error) {
 		Secret string `json:"secret"`
 	}
 	if err := json.Unmarshal(value, &credential); err != nil || credential.Secret == "" {
-		return "", ollamaFailure(ollamaAuthenticationError, err)
+		return "", providerFailure("ollama", categoryAuthentication, err)
 	}
 	return credential.Secret, nil
 }
@@ -79,23 +74,23 @@ func ollamaCredentialSecret(value json.RawMessage) (string, error) {
 func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ollamaUsageURL, nil)
 	if err != nil {
-		return nil, ollamaFailure(ollamaUnavailableError, err)
+		return nil, providerFailure("ollama", categoryUnavailable, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, ollamaFailure(ollamaTimeoutError, err)
+			return nil, providerFailure("ollama", categoryTimeout, err)
 		}
 		if errors.Is(err, context.Canceled) {
 			return nil, err
 		}
-		return nil, ollamaFailure(ollamaUnavailableError, err)
+		return nil, providerFailure("ollama", categoryUnavailable, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, ollamaFailure(classifyHTTPStatus(res.StatusCode, ollamaAuthenticationError, ollamaRateLimitedError, ollamaUnavailableError), nil)
+		return nil, providerFailure("ollama", classifyHTTPStatus(res.StatusCode), nil)
 	}
 
 	type ollamaLimit struct {
@@ -108,10 +103,10 @@ func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error)
 		} `json:"limits"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
-		return nil, ollamaFailure(ollamaMalformedResponseError, err)
+		return nil, providerFailure("ollama", categoryMalformedResponse, err)
 	}
 	if !validOllamaUsage(response.Limits.Session.Usage) || !validOllamaUsage(response.Limits.Weekly.Usage) {
-		return nil, ollamaFailure(ollamaMalformedResponseError, nil)
+		return nil, providerFailure("ollama", categoryMalformedResponse, nil)
 	}
 	return []usageWindow{
 		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(*response.Limits.Session.Usage)},
@@ -121,27 +116,4 @@ func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error)
 
 func validOllamaUsage(value *float64) bool {
 	return value != nil && *value >= 0 && *value <= 1
-}
-
-// ollamaErrorMessage returns the human-readable message for a stable ollama
-// error code, matching the prose contract other providers' errors use.
-func ollamaErrorMessage(code string) string {
-	switch code {
-	case ollamaAuthenticationError:
-		return "authentication failed"
-	case ollamaTimeoutError:
-		return fmt.Sprintf("timeout after %s", fetchTimeout)
-	case ollamaRateLimitedError:
-		return "rate limited"
-	case ollamaUnavailableError:
-		return "unavailable"
-	case ollamaMalformedResponseError:
-		return "malformed response"
-	default:
-		return code
-	}
-}
-
-func ollamaFailure(code string, cause error) error {
-	return providerError{code: code, message: ollamaErrorMessage(code), cause: cause}
 }

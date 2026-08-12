@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -27,11 +28,6 @@ const (
 	// treats as the long-running "weekly" window (a day, not literally a
 	// week); anything shorter is the "session" window.
 	openAILongWindowSeconds = int64(24 * time.Hour / time.Second)
-	openAIAuthError         = "openai_authentication"
-	openAITimeoutError      = "openai_timeout"
-	openAIRateLimitError    = "openai_rate_limited"
-	openAIUnavailable       = "openai_unavailable"
-	openAIMalformed         = "openai_malformed_response"
 )
 
 var (
@@ -195,7 +191,7 @@ func (callback *openAICallbackServer) deliver(result openAICallbackResult) {
 
 // login runs the browser OAuth flow instead of asking the user to paste a
 // credential. The URL stays visible if the automatic browser launch fails.
-func (openaiProvider) login(ctx context.Context, stdout io.Writer) (json.RawMessage, error) {
+func (openaiProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	state, err := randomURLValue()
 	if err != nil {
 		return nil, err
@@ -223,7 +219,7 @@ func (openaiProvider) login(ctx context.Context, stdout io.Writer) (json.RawMess
 	}
 	value, err := json.Marshal(credential)
 	if err != nil {
-		return nil, openAIFailure(openAIMalformed, err)
+		return nil, providerFailure("openai", categoryMalformedResponse, err)
 	}
 	return value, nil
 }
@@ -239,7 +235,7 @@ func (openaiProvider) Usage(ctx context.Context) ([]usageWindow, error) {
 func loadOpenAICredential(ctx context.Context) (openAICredential, error) {
 	value, ok, err := credential("openai")
 	if err != nil || !ok {
-		return openAICredential{}, openAIFailure(openAIAuthError, err)
+		return openAICredential{}, providerFailure("openai", categoryAuthentication, err)
 	}
 	current, err := parseOpenAICredential(value)
 	if err != nil {
@@ -256,7 +252,7 @@ func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error
 	err := mutateCredentials(ctx, func(auth *authFile) (bool, error) {
 		value, ok := auth.Credentials["openai"]
 		if !ok {
-			return false, openAIFailure(openAIAuthError, nil)
+			return false, providerFailure("openai", categoryAuthentication, nil)
 		}
 		current, err := parseOpenAICredential(value)
 		if err != nil {
@@ -272,7 +268,7 @@ func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error
 		}
 		value, err = json.Marshal(refreshed)
 		if err != nil {
-			return false, openAIFailure(openAIMalformed, err)
+			return false, providerFailure("openai", categoryMalformedResponse, err)
 		}
 		auth.Credentials["openai"] = value
 		return true, nil
@@ -286,7 +282,7 @@ func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error
 func parseOpenAICredential(value json.RawMessage) (openAICredential, error) {
 	var cred openAICredential
 	if err := json.Unmarshal(value, &cred); err != nil || strings.TrimSpace(cred.AccessToken) == "" || strings.TrimSpace(cred.RefreshToken) == "" || cred.ExpiresAt.IsZero() || strings.TrimSpace(cred.AccountID) == "" {
-		return openAICredential{}, openAIFailure(openAIAuthError, err)
+		return openAICredential{}, providerFailure("openai", categoryAuthentication, err)
 	}
 	return cred, nil
 }
@@ -312,7 +308,7 @@ func refreshOpenAICredential(ctx context.Context, refreshToken string) (openAICr
 func requestOpenAIToken(ctx context.Context, form url.Values) (openAICredential, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAITokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return openAICredential{}, openAIFailure(openAIUnavailable, err)
+		return openAICredential{}, providerFailure("openai", categoryUnavailable, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := http.DefaultClient.Do(req)
@@ -321,10 +317,10 @@ func requestOpenAIToken(ctx context.Context, form url.Values) (openAICredential,
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusBadRequest {
-		return openAICredential{}, openAIFailure(openAIAuthError, nil)
+		return openAICredential{}, providerFailure("openai", categoryAuthentication, nil)
 	}
 	if res.StatusCode != http.StatusOK {
-		return openAICredential{}, openAIFailure(classifyHTTPStatus(res.StatusCode, openAIAuthError, openAIRateLimitError, openAIUnavailable), nil)
+		return openAICredential{}, providerFailure("openai", classifyHTTPStatus(res.StatusCode), nil)
 	}
 	return decodeOpenAIToken(res.Body)
 }
@@ -338,10 +334,10 @@ func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
 	}
 	decoder := json.NewDecoder(body)
 	if err := decoder.Decode(&token); err != nil {
-		return openAICredential{}, openAIFailure(openAIMalformed, err)
+		return openAICredential{}, providerFailure("openai", categoryMalformedResponse, err)
 	}
 	if err := ensureJSONEOF(decoder); err != nil || strings.TrimSpace(token.AccessToken) == "" || strings.TrimSpace(token.RefreshToken) == "" {
-		return openAICredential{}, openAIFailure(openAIMalformed, err)
+		return openAICredential{}, providerFailure("openai", categoryMalformedResponse, err)
 	}
 	claimsToken := token.IDToken
 	if claimsToken == "" {
@@ -349,7 +345,7 @@ func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
 	}
 	claims, err := parseOpenAIJWT(claimsToken)
 	if err != nil || strings.TrimSpace(claims.AccountID) == "" {
-		return openAICredential{}, openAIFailure(openAIMalformed, err)
+		return openAICredential{}, providerFailure("openai", categoryMalformedResponse, err)
 	}
 	expiresAt := time.Time{}
 	if token.ExpiresIn != nil && *token.ExpiresIn > 0 && *token.ExpiresIn <= maxWindowSeconds {
@@ -358,7 +354,7 @@ func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
 		expiresAt = time.Unix(claims.ExpiresAt, 0)
 	}
 	if expiresAt.IsZero() {
-		return openAICredential{}, openAIFailure(openAIMalformed, nil)
+		return openAICredential{}, providerFailure("openai", categoryMalformedResponse, nil)
 	}
 	return openAICredential{
 		AccessToken:  token.AccessToken,
@@ -411,7 +407,7 @@ type openAIUsageResponseWindow struct {
 func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usageWindow, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openAIUsageURL, nil)
 	if err != nil {
-		return nil, openAIFailure(openAIUnavailable, err)
+		return nil, providerFailure("openai", categoryUnavailable, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+credential.AccessToken)
 	req.Header.Set("ChatGPT-Account-Id", credential.AccountID)
@@ -423,7 +419,7 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, openAIFailure(classifyHTTPStatus(res.StatusCode, openAIAuthError, openAIRateLimitError, openAIUnavailable), nil)
+		return nil, providerFailure("openai", classifyHTTPStatus(res.StatusCode), nil)
 	}
 
 	var response struct {
@@ -434,7 +430,7 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 	}
 	decoder := json.NewDecoder(res.Body)
 	if err := decoder.Decode(&response); err != nil || ensureJSONEOF(decoder) != nil {
-		return nil, openAIFailure(openAIMalformed, err)
+		return nil, providerFailure("openai", categoryMalformedResponse, err)
 	}
 	windows := make([]usageWindow, 0, 2)
 	for _, window := range []*openAIUsageResponseWindow{response.RateLimit.Primary, response.RateLimit.Secondary} {
@@ -448,7 +444,7 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 		windows = append(windows, normalized)
 	}
 	if len(windows) == 0 {
-		return nil, openAIFailure(openAIMalformed, nil)
+		return nil, providerFailure("openai", categoryMalformedResponse, nil)
 	}
 	return windows, nil
 }
@@ -462,7 +458,7 @@ func openAIWindowName(window *openAIUsageResponseWindow) string {
 
 func normalizeOpenAIWindow(name string, window *openAIUsageResponseWindow) (usageWindow, error) {
 	if window == nil || window.UsedPercent == nil || *window.UsedPercent < 0 || *window.UsedPercent > 100 || window.LimitWindowSeconds == nil || *window.LimitWindowSeconds <= 0 || *window.LimitWindowSeconds > maxWindowSeconds || window.ResetAt == nil || *window.ResetAt <= 0 {
-		return usageWindow{}, openAIFailure(openAIMalformed, nil)
+		return usageWindow{}, providerFailure("openai", categoryMalformedResponse, nil)
 	}
 	return usageWindow{
 		Name:     name,
@@ -474,27 +470,10 @@ func normalizeOpenAIWindow(name string, window *openAIUsageResponseWindow) (usag
 
 func openAIHTTPFailure(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return openAIFailure(openAITimeoutError, err)
+		return providerFailure("openai", categoryTimeout, err)
 	}
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
-	return openAIFailure(openAIUnavailable, err)
-}
-
-func openAIFailure(code string, cause error) error {
-	message := code
-	switch code {
-	case openAIAuthError:
-		message = "authentication failed"
-	case openAITimeoutError:
-		message = fmt.Sprintf("timeout after %s", fetchTimeout)
-	case openAIRateLimitError:
-		message = "rate limited"
-	case openAIUnavailable:
-		message = "unavailable"
-	case openAIMalformed:
-		message = "malformed response"
-	}
-	return providerError{code: code, message: message, cause: cause}
+	return providerFailure("openai", categoryUnavailable, err)
 }
