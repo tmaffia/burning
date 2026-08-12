@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // userConfigDir is overridable in tests.
@@ -49,16 +50,8 @@ func deconfigureProvider(provider string) error {
 	if err != nil {
 		return err
 	}
-	filtered := providers[:0]
-	found := false
-	for _, configured := range providers {
-		if configured == provider {
-			found = true
-			continue
-		}
-		filtered = append(filtered, configured)
-	}
-	if !found {
+	filtered := slices.DeleteFunc(providers, func(p string) bool { return p == provider })
+	if len(filtered) == len(providers) {
 		return nil
 	}
 	path, err := configPath()
