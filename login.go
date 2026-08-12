@@ -97,15 +97,11 @@ func readSecret(stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 }
 
 func openBrowser(url string) error {
-	command, args := browserCommand(runtime.GOOS, url)
-	return exec.Command(command, args...).Start()
-}
-
-func browserCommand(goos, url string) (string, []string) {
-	if goos == "darwin" {
-		return "open", []string{url}
+	command := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		command = "open"
 	}
-	return "xdg-open", []string{url}
+	return exec.Command(command, url).Start()
 }
 
 func chooseProvider(stdin *os.File, stdout io.Writer) (knownProvider, error) {

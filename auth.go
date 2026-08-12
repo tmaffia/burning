@@ -44,9 +44,9 @@ func storeCredential(ctx context.Context, provider string, value json.RawMessage
 	if !json.Valid(value) {
 		return errors.New("auth: credential is not valid JSON")
 	}
-	return mutateCredentials(ctx, func(auth *authFile) bool {
+	return mutateCredentials(ctx, func(auth *authFile) (bool, error) {
 		auth.Credentials[provider] = value
-		return true
+		return true, nil
 	})
 }
 
@@ -54,24 +54,17 @@ func removeCredential(ctx context.Context, provider string) error {
 	if provider == "" {
 		return errors.New("auth: provider is required")
 	}
-	return mutateCredentials(ctx, func(auth *authFile) bool {
+	return mutateCredentials(ctx, func(auth *authFile) (bool, error) {
 		if _, ok := auth.Credentials[provider]; !ok {
-			return false
+			return false, nil
 		}
 		delete(auth.Credentials, provider)
-		return true
+		return true, nil
 	})
 }
 
-func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
-	return mutateCredentialsWith(ctx, func(auth *authFile) (bool, error) {
-		return mutate(auth), nil
-	})
-}
-
-// mutateCredentialsWith holds the credential-store lock across a mutation
-// that can fail, including an OAuth token refresh.
-func mutateCredentialsWith(ctx context.Context, mutate func(*authFile) (bool, error)) error {
+// mutateCredentials holds the credential-store lock across a mutation.
+func mutateCredentials(ctx context.Context, mutate func(*authFile) (bool, error)) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}

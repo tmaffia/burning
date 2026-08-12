@@ -30,16 +30,6 @@ func interactiveInput(t *testing.T, input string) *os.File {
 	return reader
 }
 
-func TestBrowserCommand(t *testing.T) {
-	url := "https://example.com/?response_type=code&client_id=client"
-	if command, args := browserCommand("darwin", url); command != "open" || strings.Join(args, "|") != url {
-		t.Errorf("darwin browser command = %q %q", command, args)
-	}
-	if command, args := browserCommand("linux", url); command != "xdg-open" || strings.Join(args, "|") != url {
-		t.Errorf("linux browser command = %q %q", command, args)
-	}
-}
-
 func useInteractiveLogin(t *testing.T) {
 	t.Helper()
 	oldTerminal, oldPassword := isTerminal, readPassword

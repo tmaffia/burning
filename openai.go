@@ -18,21 +18,20 @@ import (
 )
 
 const (
-	openAIClientID       = "app_EMoamEEZ73f0CkXaXp7hrann"
-	openAIScope          = "openid profile email offline_access"
-	openAICallbackPath   = "/auth/callback"
-	openAIAuthClaim      = "https://api.openai.com/auth"
-	openAIRefreshBefore  = time.Minute
-	maxWindowSeconds     = int64((1<<63 - 1) / int64(time.Second))
+	openAIClientID      = "app_EMoamEEZ73f0CkXaXp7hrann"
+	openAIScope         = "openid profile email offline_access"
+	openAICallbackPath  = "/auth/callback"
+	openAIRefreshBefore = time.Minute
+	maxWindowSeconds    = int64((1<<63 - 1) / int64(time.Second))
 	// openAILongWindowSeconds is the minimum window length OpenAI's usage API
 	// treats as the long-running "weekly" window (a day, not literally a
 	// week); anything shorter is the "session" window.
 	openAILongWindowSeconds = int64(24 * time.Hour / time.Second)
-	openAIAuthError      = "openai_authentication"
-	openAITimeoutError   = "openai_timeout"
-	openAIRateLimitError = "openai_rate_limited"
-	openAIUnavailable    = "openai_unavailable"
-	openAIMalformed      = "openai_malformed_response"
+	openAIAuthError         = "openai_authentication"
+	openAITimeoutError      = "openai_timeout"
+	openAIRateLimitError    = "openai_rate_limited"
+	openAIUnavailable       = "openai_unavailable"
+	openAIMalformed         = "openai_malformed_response"
 )
 
 var (
@@ -40,7 +39,6 @@ var (
 	openAITokenURL        = "https://auth.openai.com/oauth/token"
 	openAIUsageURL        = "https://chatgpt.com/backend-api/wham/usage"
 	openAICallbackAddress = "127.0.0.1:1455"
-	openAINow             = time.Now
 )
 
 type openaiProvider struct{}
@@ -57,24 +55,13 @@ type openAICredential struct {
 
 type openAIAuthorization struct {
 	verifier string
-	state    string
 	url      string
 }
 
-func newOpenAIAuthorization(redirectURI string) (openAIAuthorization, error) {
-	return newOpenAIAuthorizationWithState(redirectURI, "")
-}
-
-func newOpenAIAuthorizationWithState(redirectURI, state string) (openAIAuthorization, error) {
+func newOpenAIAuthorization(redirectURI, state string) (openAIAuthorization, error) {
 	verifier, err := randomURLValue()
 	if err != nil {
 		return openAIAuthorization{}, err
-	}
-	if state == "" {
-		state, err = randomURLValue()
-		if err != nil {
-			return openAIAuthorization{}, err
-		}
 	}
 	endpoint, err := url.Parse(openAIAuthorizeURL)
 	if err != nil {
@@ -92,7 +79,7 @@ func newOpenAIAuthorizationWithState(redirectURI, state string) (openAIAuthoriza
 	query.Set("codex_cli_simplified_flow", "true")
 	query.Set("originator", "pi")
 	endpoint.RawQuery = query.Encode()
-	return openAIAuthorization{verifier: verifier, state: state, url: endpoint.String()}, nil
+	return openAIAuthorization{verifier: verifier, url: endpoint.String()}, nil
 }
 
 func randomURLValue() (string, error) {
@@ -137,10 +124,6 @@ func callbackURI(address string) string {
 		return "http://localhost:1455" + openAICallbackPath
 	}
 	return "http://" + address + openAICallbackPath
-}
-
-func (callback *openAICallbackServer) close() {
-	_ = callback.server.Close()
 }
 
 func (callback *openAICallbackServer) wait(ctx context.Context) (string, error) {
@@ -221,8 +204,8 @@ func (openaiProvider) login(ctx context.Context, stdout io.Writer) (json.RawMess
 	if err != nil {
 		return nil, err
 	}
-	defer callback.close()
-	authorization, err := newOpenAIAuthorizationWithState(callback.redirectURI, state)
+	defer callback.server.Close()
+	authorization, err := newOpenAIAuthorization(callback.redirectURI, state)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +245,7 @@ func loadOpenAICredential(ctx context.Context) (openAICredential, error) {
 	if err != nil {
 		return openAICredential{}, err
 	}
-	if !current.ExpiresAt.After(openAINow().Add(openAIRefreshBefore)) {
+	if !current.ExpiresAt.After(time.Now().Add(openAIRefreshBefore)) {
 		return refreshStoredOpenAICredential(ctx)
 	}
 	return current, nil
@@ -270,7 +253,7 @@ func loadOpenAICredential(ctx context.Context) (openAICredential, error) {
 
 func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error) {
 	var refreshed openAICredential
-	err := mutateCredentialsWith(ctx, func(auth *authFile) (bool, error) {
+	err := mutateCredentials(ctx, func(auth *authFile) (bool, error) {
 		value, ok := auth.Credentials["openai"]
 		if !ok {
 			return false, openAIFailure(openAIAuthError, nil)
@@ -279,7 +262,7 @@ func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error
 		if err != nil {
 			return false, err
 		}
-		if current.ExpiresAt.After(openAINow().Add(openAIRefreshBefore)) {
+		if current.ExpiresAt.After(time.Now().Add(openAIRefreshBefore)) {
 			refreshed = current
 			return false, nil
 		}
@@ -370,7 +353,7 @@ func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
 	}
 	expiresAt := time.Time{}
 	if token.ExpiresIn != nil && *token.ExpiresIn > 0 && *token.ExpiresIn <= maxWindowSeconds {
-		expiresAt = openAINow().Add(time.Duration(*token.ExpiresIn) * time.Second)
+		expiresAt = time.Now().Add(time.Duration(*token.ExpiresIn) * time.Second)
 	} else if claims.ExpiresAt > 0 {
 		expiresAt = time.Unix(claims.ExpiresAt, 0)
 	}

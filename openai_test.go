@@ -42,55 +42,36 @@ func testOpenAIIDToken(accountID string, expiresAt int64) string {
 	return header + "." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".signature"
 }
 
-func TestOpenAIAuthorizationUsesPKCEAndRandomState(t *testing.T) {
-	first, err := newOpenAIAuthorization("http://localhost:1455/auth/callback")
+func TestOpenAIAuthorizationUsesPKCEAndState(t *testing.T) {
+	first, err := newOpenAIAuthorization("http://localhost:1455/auth/callback", "first-state")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := newOpenAIAuthorization("http://localhost:1455/auth/callback")
+	second, err := newOpenAIAuthorization("http://localhost:1455/auth/callback", "second-state")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.verifier == second.verifier || first.state == second.state {
-		t.Fatal("PKCE verifier or state was reused")
+	if first.verifier == second.verifier {
+		t.Fatal("PKCE verifier was reused")
 	}
 	parsed, err := url.Parse(first.url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	query := parsed.Query()
-	if len(query) != 10 {
-		t.Errorf("authorize parameters = %v, want only Pi's 10 parameters", query)
+	want := url.Values{
+		"client_id":                  {openAIClientID},
+		"code_challenge":             {pkceChallenge(first.verifier)},
+		"code_challenge_method":      {"S256"},
+		"codex_cli_simplified_flow":  {"true"},
+		"id_token_add_organizations": {"true"},
+		"originator":                 {"pi"},
+		"redirect_uri":               {"http://localhost:1455/auth/callback"},
+		"response_type":              {"code"},
+		"scope":                      {"openid profile email offline_access"},
+		"state":                      {"first-state"},
 	}
-	if got := query.Get("response_type"); got != "code" {
-		t.Errorf("response_type = %q", got)
-	}
-	if got := query.Get("client_id"); got != openAIClientID {
-		t.Errorf("client_id = %q", got)
-	}
-	if got := query.Get("redirect_uri"); got != "http://localhost:1455/auth/callback" {
-		t.Errorf("redirect_uri = %q", got)
-	}
-	if got := query.Get("scope"); got != "openid profile email offline_access" {
-		t.Errorf("scope = %q", got)
-	}
-	if got := query.Get("state"); got != first.state {
-		t.Errorf("state = %q", got)
-	}
-	if got := query.Get("originator"); got != "pi" {
-		t.Errorf("originator = %q", got)
-	}
-	if got := query.Get("id_token_add_organizations"); got != "true" {
-		t.Errorf("id_token_add_organizations = %q", got)
-	}
-	if got := query.Get("codex_cli_simplified_flow"); got != "true" {
-		t.Errorf("codex_cli_simplified_flow = %q", got)
-	}
-	if got := query.Get("code_challenge_method"); got != "S256" {
-		t.Errorf("code_challenge_method = %q", got)
-	}
-	if got := query.Get("code_challenge"); got != pkceChallenge(first.verifier) {
-		t.Errorf("code_challenge = %q", got)
+	if got := parsed.Query().Encode(); got != want.Encode() {
+		t.Errorf("authorize parameters = %s, want %s", got, want.Encode())
 	}
 }
 
@@ -103,7 +84,7 @@ func TestOpenAICallbackValidatesStateAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer callback.close()
+	defer callback.server.Close()
 
 	response, err := http.Get(callback.redirectURI + "?state=wrong&code=authorization-code")
 	if err != nil {
