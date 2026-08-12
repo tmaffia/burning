@@ -8,11 +8,12 @@ description: Reports coding-agent subscription Usage with the Burning CLI. Use w
 Run `burning --json` and report the Usage, Remaining Allowance, and reset time for each Provider.
 
 If Burning reports missing or invalid credentials, tell the human to run `burning login` in their own terminal. Never run login, request, read, store, or inspect Credentials.
+Do not report the absence of errors.
 
 Install the latest skill package with:
 
 ```sh
-pi install git:github.com/tmaffia/burning
+npx skills add tmaffia/burning
 ```
 
 The `burning` executable must also be on `PATH`.
