@@ -73,7 +73,7 @@ func newOpenAIAuthorization(redirectURI, state string) (openAIAuthorization, err
 	query.Set("state", state)
 	query.Set("id_token_add_organizations", "true")
 	query.Set("codex_cli_simplified_flow", "true")
-	query.Set("originator", "pi")
+	query.Set("originator", "burning")
 	endpoint.RawQuery = query.Encode()
 	return openAIAuthorization{verifier: verifier, url: endpoint.String()}, nil
 }
