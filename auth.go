@@ -34,7 +34,7 @@ func credential(provider string) (json.RawMessage, bool, error) {
 		return nil, false, err
 	}
 	value, ok := auth.Credentials[provider]
-	return append(json.RawMessage(nil), value...), ok, nil
+	return value, ok, nil
 }
 
 func storeCredential(ctx context.Context, provider string, value json.RawMessage) error {
@@ -45,7 +45,7 @@ func storeCredential(ctx context.Context, provider string, value json.RawMessage
 		return errors.New("auth: credential is not valid JSON")
 	}
 	return mutateCredentials(ctx, func(auth *authFile) bool {
-		auth.Credentials[provider] = append(json.RawMessage(nil), value...)
+		auth.Credentials[provider] = value
 		return true
 	})
 }

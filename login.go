@@ -66,13 +66,9 @@ func readSecret(stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	if len(bytes.TrimSpace(secret)) == 0 {
 		return nil, errors.New("credential is required")
 	}
-	value, err := json.Marshal(struct {
+	return json.Marshal(struct {
 		Secret string `json:"secret"`
 	}{string(secret)})
-	if err != nil {
-		return nil, errors.New("could not store credential")
-	}
-	return value, nil
 }
 
 func chooseProvider(stdin *os.File, stdout io.Writer) (knownProvider, error) {

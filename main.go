@@ -37,8 +37,8 @@ config.json with owner-only permissions.
 Exit codes:
   0  all providers reported usage (or none are configured)
   1  one or more providers failed
-  2  the command did not run (bad flags, unreadable config, or a login or
-     logout that could not proceed)
+  2  the command did not run (bad flags, unreadable config, no terminal,
+     unknown Provider, or a login missing a credential)
 
 Providers are read from $XDG_CONFIG_HOME/burning/config.json
 (~/Library/Application Support/burning/config.json on macOS), e.g.
