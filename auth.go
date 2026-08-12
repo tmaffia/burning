@@ -64,6 +64,14 @@ func removeCredential(ctx context.Context, provider string) error {
 }
 
 func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
+	return mutateCredentialsWith(ctx, func(auth *authFile) (bool, error) {
+		return mutate(auth), nil
+	})
+}
+
+// mutateCredentialsWith holds the credential-store lock across a mutation
+// that can fail, including an OAuth token refresh.
+func mutateCredentialsWith(ctx context.Context, mutate func(*authFile) (bool, error)) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
@@ -80,8 +88,9 @@ func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
 	if err != nil {
 		return err
 	}
-	if !mutate(&auth) {
-		return nil
+	changed, err := mutate(&auth)
+	if err != nil || !changed {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("auth: %w", err)

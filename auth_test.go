@@ -30,6 +30,14 @@ func interactiveInput(t *testing.T, input string) *os.File {
 	return reader
 }
 
+func TestBrowserCommandUsesWSLInterop(t *testing.T) {
+	t.Setenv("WSL_INTEROP", "enabled")
+	command, args := browserCommand("linux", "https://example.com")
+	if command != "cmd.exe" || strings.Join(args, "|") != "/c|start||https://example.com" {
+		t.Errorf("browser command = %q %q", command, args)
+	}
+}
+
 func useInteractiveLogin(t *testing.T) {
 	t.Helper()
 	oldTerminal, oldPassword := isTerminal, readPassword
@@ -42,6 +50,7 @@ func useInteractiveLogin(t *testing.T) {
 
 func TestLoginAndLogoutSelectProvider(t *testing.T) {
 	useConfig(t, nil)
+	setRegistry(t, fakeProvider{name: "openai"}) // exercise the shared pasted-credential path
 	useInteractiveLogin(t)
 	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"token":"keep"}`)); err != nil {
 		t.Fatal(err)

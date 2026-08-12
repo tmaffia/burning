@@ -24,21 +24,27 @@ var (
 func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	return runCredentialCommand("login", "saved", args, stdin, stdout, stderr, func(p knownProvider) error {
 		impl := registry[p.name]
-		if preparer, ok := impl.(loginPreparer); ok {
-			if err := preparer.prepareLogin(stdout); err != nil {
-				return err
+		var value json.RawMessage
+		var err error
+		if oauth, ok := impl.(credentialLoginProvider); ok {
+			value, err = oauth.login(ctx, stdout)
+		} else {
+			if preparer, ok := impl.(loginPreparer); ok {
+				if err := preparer.prepareLogin(stdout); err != nil {
+					return err
+				}
+			}
+			value, err = readSecret(stdin, stdout)
+			if err == nil {
+				if verifier, ok := impl.(loginVerifier); ok {
+					verifyCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+					defer cancel()
+					err = verifier.verifyLogin(verifyCtx, value)
+				}
 			}
 		}
-		value, err := readSecret(stdin, stdout)
 		if err != nil {
 			return err
-		}
-		if verifier, ok := impl.(loginVerifier); ok {
-			verifyCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
-			defer cancel()
-			if err := verifier.verifyLogin(verifyCtx, value); err != nil {
-				return err
-			}
 		}
 		if err := storeCredential(ctx, p.name, value); err != nil {
 			return err
@@ -91,11 +97,22 @@ func readSecret(stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 }
 
 func openBrowser(url string) error {
-	command := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		command = "open"
+	command, args := browserCommand(runtime.GOOS, url)
+	return exec.Command(command, args...).Start()
+}
+
+func browserCommand(goos, url string) (string, []string) {
+	switch goos {
+	case "darwin":
+		return "open", []string{url}
+	case "windows":
+		return "rundll32", []string{"url.dll,FileProtocolHandler", url}
+	case "linux":
+		if os.Getenv("WSL_INTEROP") != "" || os.Getenv("WSL_DISTRO_NAME") != "" {
+			return "cmd.exe", []string{"/c", "start", "", url}
+		}
 	}
-	return exec.Command(command, url).Start()
+	return "xdg-open", []string{url}
 }
 
 func chooseProvider(stdin *os.File, stdout io.Writer) (knownProvider, error) {
