@@ -92,7 +92,7 @@ go build -ldflags "-X main.version=v0.1.0" -o burning .
 
 > Burning relies on undocumented provider usage endpoints that may change.
 
-The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md); supporting research is under [`docs/research/`](./docs/research/).
+The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
 
 ## Development
 

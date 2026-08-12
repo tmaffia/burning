@@ -24,6 +24,10 @@ const (
 	openAIAuthClaim      = "https://api.openai.com/auth"
 	openAIRefreshBefore  = time.Minute
 	maxWindowSeconds     = int64((1<<63 - 1) / int64(time.Second))
+	// openAILongWindowSeconds is the minimum window length OpenAI's usage API
+	// treats as the long-running "weekly" window (a day, not literally a
+	// week); anything shorter is the "session" window.
+	openAILongWindowSeconds = int64(24 * time.Hour / time.Second)
 	openAIAuthError      = "openai_authentication"
 	openAITimeoutError   = "openai_timeout"
 	openAIRateLimitError = "openai_rate_limited"
@@ -297,11 +301,11 @@ func refreshStoredOpenAICredential(ctx context.Context) (openAICredential, error
 }
 
 func parseOpenAICredential(value json.RawMessage) (openAICredential, error) {
-	var credential openAICredential
-	if err := json.Unmarshal(value, &credential); err != nil || strings.TrimSpace(credential.AccessToken) == "" || strings.TrimSpace(credential.RefreshToken) == "" || credential.ExpiresAt.IsZero() || strings.TrimSpace(credential.AccountID) == "" {
+	var cred openAICredential
+	if err := json.Unmarshal(value, &cred); err != nil || strings.TrimSpace(cred.AccessToken) == "" || strings.TrimSpace(cred.RefreshToken) == "" || cred.ExpiresAt.IsZero() || strings.TrimSpace(cred.AccountID) == "" {
 		return openAICredential{}, openAIFailure(openAIAuthError, err)
 	}
-	return credential, nil
+	return cred, nil
 }
 
 func exchangeOpenAICode(ctx context.Context, code, verifier, redirectURI string) (openAICredential, error) {
@@ -333,15 +337,11 @@ func requestOpenAIToken(ctx context.Context, form url.Values) (openAICredential,
 		return openAICredential{}, openAIHTTPFailure(err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusBadRequest {
+		return openAICredential{}, openAIFailure(openAIAuthError, nil)
+	}
 	if res.StatusCode != http.StatusOK {
-		switch res.StatusCode {
-		case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
-			return openAICredential{}, openAIFailure(openAIAuthError, nil)
-		case http.StatusTooManyRequests:
-			return openAICredential{}, openAIFailure(openAIRateLimitError, nil)
-		default:
-			return openAICredential{}, openAIFailure(openAIUnavailable, nil)
-		}
+		return openAICredential{}, openAIFailure(classifyHTTPStatus(res.StatusCode, openAIAuthError, openAIRateLimitError, openAIUnavailable), nil)
 	}
 	return decodeOpenAIToken(res.Body)
 }
@@ -439,14 +439,8 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 		return nil, openAIHTTPFailure(err)
 	}
 	defer res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, openAIFailure(openAIAuthError, nil)
-	case http.StatusTooManyRequests:
-		return nil, openAIFailure(openAIRateLimitError, nil)
-	default:
-		return nil, openAIFailure(openAIUnavailable, nil)
+	if res.StatusCode != http.StatusOK {
+		return nil, openAIFailure(classifyHTTPStatus(res.StatusCode, openAIAuthError, openAIRateLimitError, openAIUnavailable), nil)
 	}
 
 	var response struct {
@@ -477,7 +471,7 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 }
 
 func openAIWindowName(window *openAIUsageResponseWindow) string {
-	if window.LimitWindowSeconds != nil && *window.LimitWindowSeconds >= int64(24*time.Hour/time.Second) {
+	if window.LimitWindowSeconds != nil && *window.LimitWindowSeconds >= openAILongWindowSeconds {
 		return "weekly"
 	}
 	return "session"
@@ -494,15 +488,6 @@ func normalizeOpenAIWindow(name string, window *openAIUsageResponseWindow) (usag
 		ResetsAt: time.Unix(*window.ResetAt, 0),
 	}, nil
 }
-
-type openAIError struct {
-	code    string
-	message string
-	cause   error
-}
-
-func (e openAIError) Error() string { return e.message }
-func (e openAIError) Unwrap() error { return e.cause }
 
 func openAIHTTPFailure(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -528,5 +513,5 @@ func openAIFailure(code string, cause error) error {
 	case openAIMalformed:
 		message = "malformed response"
 	}
-	return openAIError{code: code, message: message, cause: cause}
+	return providerError{code: code, message: message, cause: cause}
 }

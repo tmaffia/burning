@@ -30,12 +30,13 @@ func interactiveInput(t *testing.T, input string) *os.File {
 	return reader
 }
 
-func TestBrowserCommandUsesXDGOpenInWSL(t *testing.T) {
-	t.Setenv("WSL_INTEROP", "enabled")
+func TestBrowserCommand(t *testing.T) {
 	url := "https://example.com/?response_type=code&client_id=client"
-	command, args := browserCommand("linux", url)
-	if command != "xdg-open" || strings.Join(args, "|") != url {
-		t.Errorf("browser command = %q %q", command, args)
+	if command, args := browserCommand("darwin", url); command != "open" || strings.Join(args, "|") != url {
+		t.Errorf("darwin browser command = %q %q", command, args)
+	}
+	if command, args := browserCommand("linux", url); command != "xdg-open" || strings.Join(args, "|") != url {
+		t.Errorf("linux browser command = %q %q", command, args)
 	}
 }
 

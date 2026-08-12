@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -34,6 +35,30 @@ type usageWindow struct {
 type provider interface {
 	Name() string
 	Usage(ctx context.Context) ([]usageWindow, error)
+}
+
+// providerError is a Provider failure carrying a stable code alongside its
+// human-readable message, wrapping the underlying cause when there is one.
+type providerError struct {
+	code    string
+	message string
+	cause   error
+}
+
+func (e providerError) Error() string { return e.message }
+func (e providerError) Unwrap() error { return e.cause }
+
+// classifyHTTPStatus maps a non-2xx response status to the stable provider
+// error code shared by every provider's HTTP calls.
+func classifyHTTPStatus(status int, authCode, rateLimitCode, unavailableCode string) string {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return authCode
+	case http.StatusTooManyRequests:
+		return rateLimitCode
+	default:
+		return unavailableCode
+	}
 }
 
 // credentialLoginProvider completes a provider-specific credential flow,
@@ -115,7 +140,7 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
 			if errors.Is(results[i].err, context.DeadlineExceeded) {
-				if _, ok := results[i].err.(ollamaError); !ok {
+				if _, ok := results[i].err.(providerError); !ok {
 					results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
 				}
 			}

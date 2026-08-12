@@ -324,12 +324,12 @@ func TestOpenAIRefreshPersistsRotatedCredentialUnderLock(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("credential exists = %v, err = %v", ok, err)
 	}
-	var credential openAICredential
-	if err := json.Unmarshal(value, &credential); err != nil {
+	var cred openAICredential
+	if err := json.Unmarshal(value, &cred); err != nil {
 		t.Fatal(err)
 	}
-	if credential.RefreshToken != "new-refresh" || credential.AccountID != "new-account" {
-		t.Errorf("stored credential = %+v", credential)
+	if cred.RefreshToken != "new-refresh" || cred.AccountID != "new-account" {
+		t.Errorf("stored credential = %+v", cred)
 	}
 }
 
