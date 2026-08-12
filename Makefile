@@ -1,4 +1,4 @@
-.PHONY: build test vet check fmt clean
+.PHONY: build test vet check e2e fmt clean
 
 build:
 	go build -o burning .
@@ -10,6 +10,10 @@ vet:
 	go vet ./...
 
 check: test vet
+
+e2e:
+	go test -count=1 ./...
+	BURNING_E2E=1 go test -count=1 -run '^TestLiveProviders$$' .
 
 fmt:
 	go fmt ./...
