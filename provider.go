@@ -28,15 +28,14 @@ type usageWindow struct {
 	ResetsAt time.Time // zero if unknown
 }
 
-// provider reports usage for one subscription service. Real providers
-// (auth, HTTP) arrive in later issues; tests register fakes here.
+// provider reports Usage for one subscription service.
 type provider interface {
 	Name() string
 	Usage(ctx context.Context) ([]usageWindow, error)
 }
 
 // registry maps configured provider names to implementations.
-var registry = map[string]provider{}
+var registry = map[string]provider{"ollama": ollamaProvider{}}
 
 // knownProvider is a Provider Burning ships support for: the name used in
 // config.json, auth.json and registry, plus the label shown to humans.
@@ -93,7 +92,11 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
 			if errors.Is(results[i].err, context.DeadlineExceeded) {
-				results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
+				if name == "ollama" {
+					results[i].err = ollamaFailure(ollamaTimeoutError, results[i].err)
+				} else {
+					results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
+				}
 			}
 		}(i, p)
 	}

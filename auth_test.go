@@ -43,30 +43,30 @@ func useInteractiveLogin(t *testing.T) {
 func TestLoginAndLogoutSelectProvider(t *testing.T) {
 	useConfig(t, nil)
 	useInteractiveLogin(t)
-	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"keep"}`)); err != nil {
+	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"token":"keep"}`)); err != nil {
 		t.Fatal(err)
 	}
 	var out, errOut bytes.Buffer
-	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, "2\n"), &out, &errOut); code != 0 {
+	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, "1\n"), &out, &errOut); code != 0 {
 		t.Fatalf("login exit = %d, stderr = %q", code, errOut.String())
 	}
 	if strings.Contains(out.String(), "secret") || strings.Contains(errOut.String(), "secret") {
 		t.Fatal("credential appeared in command output")
 	}
-	if got, ok, err := credential("ollama"); err != nil || !ok || string(got) != `{"secret":"secret"}` {
-		t.Errorf("ollama credential was not stored: exists = %v, err = %v", ok, err)
+	if got, ok, err := credential("openai"); err != nil || !ok || string(got) != `{"secret":"secret"}` {
+		t.Errorf("openai credential was not stored: exists = %v, err = %v", ok, err)
 	}
 
 	out.Reset()
 	errOut.Reset()
-	if code := runWithInput(context.Background(), []string{"logout"}, interactiveInput(t, "2\n"), &out, &errOut); code != 0 {
+	if code := runWithInput(context.Background(), []string{"logout"}, interactiveInput(t, "1\n"), &out, &errOut); code != 0 {
 		t.Fatalf("logout exit = %d, stderr = %q", code, errOut.String())
 	}
-	if _, ok, err := credential("ollama"); err != nil || ok {
-		t.Errorf("ollama credential exists = %v, err = %v", ok, err)
-	}
-	if _, ok, err := credential("openai"); err != nil || !ok {
+	if _, ok, err := credential("openai"); err != nil || ok {
 		t.Errorf("openai credential exists = %v, err = %v", ok, err)
+	}
+	if _, ok, err := credential("ollama"); err != nil || !ok {
+		t.Errorf("ollama credential exists = %v, err = %v", ok, err)
 	}
 }
 
