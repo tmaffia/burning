@@ -55,12 +55,12 @@ func TestOllamaUsage(t *testing.T) {
 		body   string
 		want   string
 	}{
-		{"invalid credentials", http.StatusUnauthorized, "", ollamaAuthenticationError},
-		{"rate limited", http.StatusTooManyRequests, "", ollamaRateLimitedError},
-		{"unavailable", http.StatusServiceUnavailable, "", ollamaUnavailableError},
-		{"malformed body", http.StatusOK, "{}", ollamaMalformedResponseError},
-		{"out of range", http.StatusOK, `{"limits":{"session":{"usage":1.1},"weekly":{"usage":0}}}`, ollamaMalformedResponseError},
-		{"negative usage", http.StatusOK, `{"limits":{"session":{"usage":-0.1},"weekly":{"usage":0}}}`, ollamaMalformedResponseError},
+		{"invalid credentials", http.StatusUnauthorized, "", providerErrorCode("ollama", categoryAuthentication)},
+		{"rate limited", http.StatusTooManyRequests, "", providerErrorCode("ollama", categoryRateLimited)},
+		{"unavailable", http.StatusServiceUnavailable, "", providerErrorCode("ollama", categoryUnavailable)},
+		{"malformed body", http.StatusOK, "{}", providerErrorCode("ollama", categoryMalformedResponse)},
+		{"out of range", http.StatusOK, `{"limits":{"session":{"usage":1.1},"weekly":{"usage":0}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
+		{"negative usage", http.StatusOK, `{"limits":{"session":{"usage":-0.1},"weekly":{"usage":0}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +84,8 @@ func TestOllamaUsageCancellation(t *testing.T) {
 	defer cancel()
 	_, err := fetchOllamaUsage(ctx, "test-secret")
 	oe, ok := errors.AsType[providerError](err)
-	if !ok || oe.code != ollamaTimeoutError || !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("error = %v, want %s wrapping deadline exceeded", err, ollamaTimeoutError)
+	if !ok || oe.code != providerErrorCode("ollama", categoryTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, want %s wrapping deadline exceeded", err, providerErrorCode("ollama", categoryTimeout))
 	}
 }
 

@@ -1,25 +1,9 @@
-.PHONY: build test vet fmtcheck check e2e fmt clean
+.PHONY: check e2e
 
-build:
-	go build -o burning .
-
-test:
+check:
+	@files="$$(gofmt -l .)"; test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
+	go vet ./...
 	go test ./...
 
-vet:
-	go vet ./...
-
-fmtcheck:
-	@files="$$(gofmt -l .)"; test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
-
-check: fmtcheck vet test
-
 e2e:
-	go test -count=1 ./...
-	BURNING_E2E=1 go test -count=1 -run '^TestLiveProviders$$' .
-
-fmt:
-	go fmt ./...
-
-clean:
-	rm -f burning
+	BURNING_E2E=1 go test -count=1 ./...

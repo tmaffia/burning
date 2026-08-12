@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,11 @@ func (f fakeProvider) Name() string { return f.name }
 func (f fakeProvider) Usage(context.Context) ([]usageWindow, error) {
 	time.Sleep(f.delay)
 	return f.windows, f.err
+}
+
+// login exercises the shared pasted-credential path.
+func (f fakeProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
+	return readSecret(stdin, stdout)
 }
 
 func setRegistry(t *testing.T, ps ...provider) {
