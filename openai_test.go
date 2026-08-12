@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,9 +29,17 @@ func useOpenAIEndpoints(t *testing.T, handler http.HandlerFunc) {
 }
 
 func testOpenAIJWT(accountID string) string {
+	return testOpenAIIDToken(accountID, 0)
+}
+
+func testOpenAIIDToken(accountID string, expiresAt int64) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
-	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"https://api.openai.com/auth":{"chatgpt_account_id":"` + accountID + `"}}`))
-	return header + "." + payload + ".signature"
+	payload := `{"https://api.openai.com/auth":{"chatgpt_account_id":"` + accountID + `"}`
+	if expiresAt != 0 {
+		payload += `,"exp":` + strconv.FormatInt(expiresAt, 10)
+	}
+	payload += `}`
+	return header + "." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".signature"
 }
 
 func TestOpenAIAuthorizationUsesPKCEAndRandomState(t *testing.T) {
@@ -200,6 +209,17 @@ func TestOpenAILoginExchangesCallbackAfterBrowserLaunchFailure(t *testing.T) {
 	}
 }
 
+func TestOpenAITokenUsesIDTokenClaimsAndExpiry(t *testing.T) {
+	const expiresAt = 1781276043
+	credential, err := decodeOpenAIToken(strings.NewReader(`{"id_token":"` + testOpenAIIDToken("account-id", expiresAt) + `","access_token":"opaque-access-token","refresh_token":"rotated-refresh"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credential.AccountID != "account-id" || credential.AccessToken != "opaque-access-token" || credential.RefreshToken != "rotated-refresh" || !credential.ExpiresAt.Equal(time.Unix(expiresAt, 0)) {
+		t.Errorf("credential = %+v", credential)
+	}
+}
+
 func TestOpenAIUsageNormalizesPrimaryAndWeeklyWindows(t *testing.T) {
 	useOpenAIEndpoints(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/backend-api/wham/usage" || r.Method != http.MethodGet {
@@ -225,6 +245,23 @@ func TestOpenAIUsageNormalizesPrimaryAndWeeklyWindows(t *testing.T) {
 		t.Errorf("session = %+v", got)
 	}
 	if got := windows[1]; got.Name != "weekly" || got.Duration != 7*24*time.Hour || got.Usage.percent() != 75 || !got.ResetsAt.Equal(time.Unix(1781622947, 0)) {
+		t.Errorf("weekly = %+v", got)
+	}
+}
+
+func TestOpenAIUsageUsesPrimaryWeeklyWindowWhenSecondaryIsAbsent(t *testing.T) {
+	useOpenAIEndpoints(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"rate_limit":{"primary_window":{"used_percent":25,"limit_window_seconds":604800,"reset_at":1781276043},"secondary_window":null}}`)
+	})
+
+	windows, err := fetchOpenAIUsage(context.Background(), openAICredential{AccessToken: "access-token", AccountID: "account-id"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(windows) != 1 {
+		t.Fatalf("windows = %+v", windows)
+	}
+	if got := windows[0]; got.Name != "weekly" || got.Duration != 7*24*time.Hour || got.Usage.percent() != 25 || !got.ResetsAt.Equal(time.Unix(1781276043, 0)) {
 		t.Errorf("weekly = %+v", got)
 	}
 }

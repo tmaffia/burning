@@ -348,26 +348,40 @@ func requestOpenAIToken(ctx context.Context, form url.Values) (openAICredential,
 
 func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
 	var token struct {
+		IDToken      string `json:"id_token"`
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
+		ExpiresIn    *int64 `json:"expires_in"`
 	}
 	decoder := json.NewDecoder(body)
 	if err := decoder.Decode(&token); err != nil {
 		return openAICredential{}, openAIFailure(openAIMalformed, err)
 	}
-	if err := ensureJSONEOF(decoder); err != nil || strings.TrimSpace(token.AccessToken) == "" || strings.TrimSpace(token.RefreshToken) == "" || token.ExpiresIn <= 0 || token.ExpiresIn > maxWindowSeconds {
+	if err := ensureJSONEOF(decoder); err != nil || strings.TrimSpace(token.AccessToken) == "" || strings.TrimSpace(token.RefreshToken) == "" {
 		return openAICredential{}, openAIFailure(openAIMalformed, err)
 	}
-	accountID, err := accountIDFromJWT(token.AccessToken)
-	if err != nil {
+	claimsToken := token.IDToken
+	if claimsToken == "" {
+		claimsToken = token.AccessToken
+	}
+	claims, err := parseOpenAIJWT(claimsToken)
+	if err != nil || strings.TrimSpace(claims.AccountID) == "" {
 		return openAICredential{}, openAIFailure(openAIMalformed, err)
+	}
+	expiresAt := time.Time{}
+	if token.ExpiresIn != nil && *token.ExpiresIn > 0 && *token.ExpiresIn <= maxWindowSeconds {
+		expiresAt = openAINow().Add(time.Duration(*token.ExpiresIn) * time.Second)
+	} else if claims.ExpiresAt > 0 {
+		expiresAt = time.Unix(claims.ExpiresAt, 0)
+	}
+	if expiresAt.IsZero() {
+		return openAICredential{}, openAIFailure(openAIMalformed, nil)
 	}
 	return openAICredential{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresAt:    openAINow().Add(time.Duration(token.ExpiresIn) * time.Second),
-		AccountID:    accountID,
+		ExpiresAt:    expiresAt,
+		AccountID:    claims.AccountID,
 	}, nil
 }
 
@@ -379,22 +393,30 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func accountIDFromJWT(accessToken string) (string, error) {
-	parts := strings.Split(accessToken, ".")
+type openAIJWTClaims struct {
+	AccountID string
+	ExpiresAt int64
+}
+
+func parseOpenAIJWT(token string) (openAIJWTClaims, error) {
+	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return "", errors.New("invalid access token")
+		return openAIJWTClaims{}, errors.New("invalid token")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", errors.New("invalid access token")
+		return openAIJWTClaims{}, errors.New("invalid token")
 	}
-	var claims map[string]struct {
-		AccountID string `json:"chatgpt_account_id"`
+	var claims struct {
+		ExpiresAt int64 `json:"exp"`
+		Auth      struct {
+			AccountID string `json:"chatgpt_account_id"`
+		} `json:"https://api.openai.com/auth"`
 	}
-	if err := json.Unmarshal(payload, &claims); err != nil || strings.TrimSpace(claims[openAIAuthClaim].AccountID) == "" {
-		return "", errors.New("invalid access token")
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return openAIJWTClaims{}, errors.New("invalid token")
 	}
-	return claims[openAIAuthClaim].AccountID, nil
+	return openAIJWTClaims{AccountID: claims.Auth.AccountID, ExpiresAt: claims.ExpiresAt}, nil
 }
 
 type openAIUsageResponseWindow struct {
@@ -437,15 +459,28 @@ func fetchOpenAIUsage(ctx context.Context, credential openAICredential) ([]usage
 	if err := decoder.Decode(&response); err != nil || ensureJSONEOF(decoder) != nil {
 		return nil, openAIFailure(openAIMalformed, err)
 	}
-	primary, err := normalizeOpenAIWindow("session", response.RateLimit.Primary)
-	if err != nil {
-		return nil, err
+	windows := make([]usageWindow, 0, 2)
+	for _, window := range []*openAIUsageResponseWindow{response.RateLimit.Primary, response.RateLimit.Secondary} {
+		if window == nil {
+			continue
+		}
+		normalized, err := normalizeOpenAIWindow(openAIWindowName(window), window)
+		if err != nil {
+			return nil, err
+		}
+		windows = append(windows, normalized)
 	}
-	secondary, err := normalizeOpenAIWindow("weekly", response.RateLimit.Secondary)
-	if err != nil {
-		return nil, err
+	if len(windows) == 0 {
+		return nil, openAIFailure(openAIMalformed, nil)
 	}
-	return []usageWindow{primary, secondary}, nil
+	return windows, nil
+}
+
+func openAIWindowName(window *openAIUsageResponseWindow) string {
+	if window.LimitWindowSeconds != nil && *window.LimitWindowSeconds >= int64(24*time.Hour/time.Second) {
+		return "weekly"
+	}
+	return "session"
 }
 
 func normalizeOpenAIWindow(name string, window *openAIUsageResponseWindow) (usageWindow, error) {

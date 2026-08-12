@@ -109,7 +109,9 @@ func browserCommand(goos, url string) (string, []string) {
 		return "rundll32", []string{"url.dll,FileProtocolHandler", url}
 	case "linux":
 		if os.Getenv("WSL_INTEROP") != "" || os.Getenv("WSL_DISTRO_NAME") != "" {
-			return "cmd.exe", []string{"/c", "start", "", url}
+			// Do not use cmd.exe /c start: cmd treats OAuth URL '&' characters
+			// as command separators and opens a truncated authorize request.
+			return "rundll32.exe", []string{"url.dll,FileProtocolHandler", url}
 		}
 	}
 	return "xdg-open", []string{url}
