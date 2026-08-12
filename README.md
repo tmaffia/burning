@@ -3,31 +3,19 @@
 A small CLI for checking coding-agent subscription usage from the terminal or an agent.
 
 ```text
-OpenAI  5h ▕███░░░░░░░▏ 28% usage · 3h12m │ 7d ▕██████░░░░▏ 61% usage · 4d6h
-Ollama  5h ▕█░░░░░░░░░▏  5% usage         │ 7d ▕█░░░░░░░░░▏  5% usage
+openai   5h [###.......]  28% usage · 3h12m │ 7d [######....]  61% usage · 4d6h
+ollama   5h [#.........]   5% usage │ 7d [#.........]   5% usage
 ```
 
-## Planned v0.1
-
-- OpenAI Codex and Ollama Cloud
-- Standalone `burning login` and `burning logout`
-- Usage bars for humans and versioned JSON for agents
-- Session and weekly usage windows, with reset countdowns when available
-- macOS and Linux binaries for AMD64 and ARM64, including WSL support
-- A small [Agent Skills](https://agentskills.io/) integration
-
-```text
-burning            # human report
-burning --json     # machine-readable report
-burning --version  # "dev" unless stamped at build time
-```
+Reports OpenAI Codex and Ollama Cloud usage across session and weekly windows.
 
 ## Install
 
 ### Go
 
 ```sh
-go install github.com/tmaffia/burning@latest
+go install github.com/tmaffia/burning@latest   # install or update
+rm "$(go env GOPATH)/bin/burning"              # uninstall
 ```
 
 ### Release archive
@@ -41,6 +29,14 @@ curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/${ARCH
 curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/SHA256SUMS"
 grep " ${ARCHIVE}$" SHA256SUMS | shasum -a 256 -c -
 tar -xzf "$ARCHIVE"
+```
+
+## Usage
+
+```sh
+burning            # human report
+burning --json     # machine-readable report
+burning --version  # "dev" unless stamped at build time
 ```
 
 ## Configuration
@@ -119,12 +115,14 @@ go build -ldflags "-X main.version=v0.1.0" -o burning .
 
 The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
 
-## Pi
+## Agent skill
 
-Install the latest Burning skill package for Pi:
+Install the Burning skill for your agent with the [skills](https://github.com/vercel-labs/skills) CLI:
 
 ```sh
-pi install git:github.com/tmaffia/burning
+npx skills add tmaffia/burning  # install
+npx skills update burning       # update
+npx skills remove burning       # uninstall
 ```
 
 The `burning` executable must also be on `PATH`. The skill runs `burning --json` for Usage requests and directs credential setup to `burning login` in your terminal.
