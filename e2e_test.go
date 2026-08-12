@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -11,14 +12,23 @@ import (
 	"testing"
 )
 
-func buildExecutable(t *testing.T) string {
-	t.Helper()
-	binary := filepath.Join(t.TempDir(), "burning")
-	cmd := exec.Command("go", "build", "-o", binary, ".")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build executable: %v\n%s", err, output)
+var binaryPath string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "burning-e2e")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "make temp dir:", err)
+		os.Exit(1)
 	}
-	return binary
+	defer os.RemoveAll(dir)
+
+	binaryPath = filepath.Join(dir, "burning")
+	if output, err := exec.Command("go", "build", "-o", binaryPath, ".").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "build executable: %v\n%s", err, output)
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
 }
 
 func runExecutable(t *testing.T, binary string, args ...string) (stdout, stderr string, exitCode int) {
@@ -37,7 +47,6 @@ func runExecutable(t *testing.T, binary string, args ...string) (stdout, stderr 
 }
 
 func TestExecutableSmoke(t *testing.T) {
-	binary := buildExecutable(t)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 
@@ -101,7 +110,7 @@ func TestExecutableSmoke(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			stdout, stderr, exitCode := runExecutable(t, binary, test.args...)
+			stdout, stderr, exitCode := runExecutable(t, binaryPath, test.args...)
 			if exitCode != test.exit {
 				t.Fatalf("exit = %d, want %d; stdout = %q, stderr = %q", exitCode, test.exit, stdout, stderr)
 			}
@@ -115,7 +124,7 @@ func TestLiveProviders(t *testing.T) {
 		t.Skip("set BURNING_E2E=1 to check configured providers")
 	}
 
-	stdout, stderr, exitCode := runExecutable(t, buildExecutable(t), "--json")
+	stdout, stderr, exitCode := runExecutable(t, binaryPath, "--json")
 	if exitCode != 0 {
 		t.Errorf("exit = %d; stdout = %q, stderr = %q", exitCode, stdout, stderr)
 	}
