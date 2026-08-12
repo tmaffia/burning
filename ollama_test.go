@@ -68,7 +68,7 @@ func TestOllamaUsage(t *testing.T) {
 				_, _ = w.Write([]byte(test.body))
 			})
 			_, err := fetchOllamaUsage(context.Background(), "test-secret")
-			oe, ok := errors.AsType[ollamaError](err)
+			oe, ok := errors.AsType[providerError](err)
 			if !ok || oe.code != test.want {
 				t.Errorf("error = %v, want code %q", err, test.want)
 			}
@@ -83,7 +83,7 @@ func TestOllamaUsageCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 	_, err := fetchOllamaUsage(ctx, "test-secret")
-	oe, ok := errors.AsType[ollamaError](err)
+	oe, ok := errors.AsType[providerError](err)
 	if !ok || oe.code != ollamaTimeoutError || !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("error = %v, want %s wrapping deadline exceeded", err, ollamaTimeoutError)
 	}
@@ -104,7 +104,7 @@ func TestOllamaUsageExplicitCancellation(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want context.Canceled", err)
 	}
-	if _, ok := errors.AsType[ollamaError](err); ok {
+	if _, ok := errors.AsType[providerError](err); ok {
 		t.Errorf("error = %v, should not carry a stable ollama error code", err)
 	}
 }

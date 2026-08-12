@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -36,6 +37,36 @@ type provider interface {
 	Usage(ctx context.Context) ([]usageWindow, error)
 }
 
+// providerError is a Provider failure carrying a stable code alongside its
+// human-readable message, wrapping the underlying cause when there is one.
+type providerError struct {
+	code    string
+	message string
+	cause   error
+}
+
+func (e providerError) Error() string { return e.message }
+func (e providerError) Unwrap() error { return e.cause }
+
+// classifyHTTPStatus maps a non-2xx response status to the stable provider
+// error code shared by every provider's HTTP calls.
+func classifyHTTPStatus(status int, authCode, rateLimitCode, unavailableCode string) string {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return authCode
+	case http.StatusTooManyRequests:
+		return rateLimitCode
+	default:
+		return unavailableCode
+	}
+}
+
+// credentialLoginProvider completes a provider-specific credential flow,
+// such as OAuth, instead of prompting for a pasted Credential.
+type credentialLoginProvider interface {
+	login(ctx context.Context, stdout io.Writer) (json.RawMessage, error)
+}
+
 // loginPreparer lets a provider run a step before its credential prompt,
 // such as opening a page to obtain a credential.
 type loginPreparer interface {
@@ -49,7 +80,10 @@ type loginVerifier interface {
 }
 
 // registry maps configured provider names to implementations.
-var registry = map[string]provider{"ollama": ollamaProvider{}}
+var registry = map[string]provider{
+	"openai": openaiProvider{},
+	"ollama": ollamaProvider{},
+}
 
 // knownProvider is a Provider Burning ships support for: the name used in
 // config.json, auth.json and registry, plus the label shown to humans.
@@ -106,7 +140,7 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
 			if errors.Is(results[i].err, context.DeadlineExceeded) {
-				if _, ok := results[i].err.(ollamaError); !ok {
+				if _, ok := results[i].err.(providerError); !ok {
 					results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
 				}
 			}

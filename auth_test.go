@@ -42,6 +42,7 @@ func useInteractiveLogin(t *testing.T) {
 
 func TestLoginAndLogoutSelectProvider(t *testing.T) {
 	useConfig(t, nil)
+	setRegistry(t, fakeProvider{name: "openai"}) // exercise the shared pasted-credential path
 	useInteractiveLogin(t)
 	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"token":"keep"}`)); err != nil {
 		t.Fatal(err)

@@ -94,14 +94,8 @@ func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error)
 	}
 	defer res.Body.Close()
 
-	switch res.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, ollamaFailure(ollamaAuthenticationError, nil)
-	case http.StatusTooManyRequests:
-		return nil, ollamaFailure(ollamaRateLimitedError, nil)
-	default:
-		return nil, ollamaFailure(ollamaUnavailableError, nil)
+	if res.StatusCode != http.StatusOK {
+		return nil, ollamaFailure(classifyHTTPStatus(res.StatusCode, ollamaAuthenticationError, ollamaRateLimitedError, ollamaUnavailableError), nil)
 	}
 
 	type ollamaLimit struct {
@@ -129,15 +123,6 @@ func validOllamaUsage(value *float64) bool {
 	return value != nil && *value >= 0 && *value <= 1
 }
 
-type ollamaError struct {
-	code    string
-	message string
-	cause   error
-}
-
-func (e ollamaError) Error() string { return e.message }
-func (e ollamaError) Unwrap() error { return e.cause }
-
 // ollamaErrorMessage returns the human-readable message for a stable ollama
 // error code, matching the prose contract other providers' errors use.
 func ollamaErrorMessage(code string) string {
@@ -158,5 +143,5 @@ func ollamaErrorMessage(code string) string {
 }
 
 func ollamaFailure(code string, cause error) error {
-	return ollamaError{code: code, message: ollamaErrorMessage(code), cause: cause}
+	return providerError{code: code, message: ollamaErrorMessage(code), cause: cause}
 }

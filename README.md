@@ -40,10 +40,11 @@ burning logout
 ```
 
 Both commands select a Provider interactively. `login` adds that Provider to
-`config.json`. Ollama Cloud login opens its
-[API-key page](https://ollama.com/settings/keys), verifies the entered Credential, and
-stores it only in `auth.json` beside `config.json`; the directory and credential
-file are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides that stored
+`config.json`. OpenAI Codex login opens a browser for ChatGPT OAuth and stores
+the resulting Credential only in `auth.json` beside `config.json`. Ollama Cloud
+login opens its [API-key page](https://ollama.com/settings/keys), verifies the
+entered Credential, and stores it there too; the directory and credential file
+are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides that stored
 Ollama Cloud Credential for the current invocation.
 
 ## Exit codes
@@ -91,7 +92,7 @@ go build -ldflags "-X main.version=v0.1.0" -o burning .
 
 > Burning relies on undocumented provider usage endpoints that may change.
 
-The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md); supporting research is under [`docs/research/`](./docs/research/).
+The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
 
 ## Development
 
