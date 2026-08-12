@@ -96,6 +96,14 @@ The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
 
 ## Development
 
+### End-to-end checks
+
+`make e2e` runs the complete Go suite, then invokes `burning --json` once
+against every configured Provider. It requires configured Providers, working
+Credentials, and network access. It uses the existing configuration and
+Credentials; OpenAI may refresh its Credential automatically. Login and logout
+are intentionally excluded.
+
 Implementation is tracked in [GitHub Issues](https://github.com/tmaffia/burning/issues).
 
 ## License
