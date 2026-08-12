@@ -1,0 +1,6 @@
+/burning
+/dist/
+*.test
+*.out
+.env
+.DS_Store
