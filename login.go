@@ -44,7 +44,10 @@ func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr
 				return err
 			}
 		}
-		return storeCredential(ctx, p.name, value)
+		if err := storeCredential(ctx, p.name, value); err != nil {
+			return err
+		}
+		return configureProvider(p.name)
 	})
 }
 

@@ -155,4 +155,13 @@ func TestOllamaLoginOpensVerifiesAndStoresKey(t *testing.T) {
 	if got, ok, err := credential("ollama"); err != nil || !ok || string(got) != `{"secret":"secret"}` {
 		t.Errorf("credential = %s, exists = %v, err = %v", got, ok, err)
 	}
+	if providers, err := configuredProviders(); err != nil || len(providers) != 1 || providers[0] != "ollama" {
+		t.Errorf("configured providers = %v, error = %v", providers, err)
+	}
+	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, "2\n"), &out, &errOut); code != 0 {
+		t.Fatalf("second login exit = %d, stderr = %q", code, errOut.String())
+	}
+	if providers, err := configuredProviders(); err != nil || len(providers) != 1 || providers[0] != "ollama" {
+		t.Errorf("configured providers after re-login = %v, error = %v", providers, err)
+	}
 }
