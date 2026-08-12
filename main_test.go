@@ -31,11 +31,14 @@ func (f fakeProvider) Usage(context.Context) ([]usageWindow, error) {
 	return f.windows, f.err
 }
 
-func setRegistry(ps ...provider) {
+func setRegistry(t *testing.T, ps ...provider) {
+	t.Helper()
+	old := registry
 	registry = map[string]provider{}
 	for _, p := range ps {
 		registry[p.Name()] = p
 	}
+	t.Cleanup(func() { registry = old })
 }
 
 // useConfig points config and credential loading at a temp dir, returning it,
@@ -66,7 +69,7 @@ func useConfig(t *testing.T, providers []string) string {
 }
 
 func TestFullSuccessJSON(t *testing.T) {
-	setRegistry(
+	setRegistry(t,
 		fakeProvider{name: "openai", windows: []usageWindow{
 			{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
 			{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.607), ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
@@ -125,7 +128,7 @@ func TestFullSuccessJSON(t *testing.T) {
 }
 
 func TestHumanReport(t *testing.T) {
-	setRegistry(fakeProvider{name: "openai", windows: []usageWindow{
+	setRegistry(t, fakeProvider{name: "openai", windows: []usageWindow{
 		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
 		{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.607), ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
 	}})
@@ -144,7 +147,7 @@ func TestHumanReport(t *testing.T) {
 }
 
 func TestPartialFailure(t *testing.T) {
-	setRegistry(
+	setRegistry(t,
 		fakeProvider{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.5)}}},
 		fakeProvider{name: "ollama", err: errors.New("boom")},
 	)
@@ -175,7 +178,7 @@ func TestPartialFailure(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	setRegistry(fakeProvider{name: "openai", delay: 100 * time.Millisecond})
+	setRegistry(t, fakeProvider{name: "openai", delay: 100 * time.Millisecond})
 	useConfig(t, []string{"openai"})
 	old := fetchTimeout
 	fetchTimeout = 5 * time.Millisecond
@@ -198,7 +201,7 @@ func TestTimeout(t *testing.T) {
 // login/logout: a canceled context aborts provider fetches instead of waiting
 // out fetchTimeout.
 func TestCancelStopsFetch(t *testing.T) {
-	setRegistry(fakeProvider{name: "openai", delay: 100 * time.Millisecond})
+	setRegistry(t, fakeProvider{name: "openai", delay: 100 * time.Millisecond})
 	useConfig(t, []string{"openai"})
 	old := fetchTimeout
 	fetchTimeout = 5 * time.Second // long enough that only cancellation can end the fetch

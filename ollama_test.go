@@ -28,13 +28,13 @@ func TestOllamaUsage(t *testing.T) {
 			if r.Method != http.MethodGet || r.URL.Path != "/" {
 				t.Errorf("request = %s %s, want GET /", r.Method, r.URL.Path)
 			}
-			if got := r.Header.Get("Authorization"); got != "Bearer api-key" {
+			if got := r.Header.Get("Authorization"); got != "Bearer test-secret" {
 				t.Errorf("Authorization = %q", got)
 			}
 			_, _ = w.Write([]byte(`{"limits":{"session":{"usage":0.25,"models":"ignored"},"weekly":{"usage":0.75}},"activity":{"cost":"ignored"}}`))
 		})
 
-		windows, err := fetchOllamaUsage(context.Background(), "api-key")
+		windows, err := fetchOllamaUsage(context.Background(), "test-secret")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,8 +67,10 @@ func TestOllamaUsage(t *testing.T) {
 				w.WriteHeader(test.status)
 				_, _ = w.Write([]byte(test.body))
 			})
-			if _, err := fetchOllamaUsage(context.Background(), "api-key"); err == nil || err.Error() != test.want {
-				t.Errorf("error = %v, want %q", err, test.want)
+			_, err := fetchOllamaUsage(context.Background(), "test-secret")
+			oe, ok := errors.AsType[ollamaError](err)
+			if !ok || oe.code != test.want {
+				t.Errorf("error = %v, want code %q", err, test.want)
 			}
 		})
 	}
@@ -80,8 +82,30 @@ func TestOllamaUsageCancellation(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
-	if _, err := fetchOllamaUsage(ctx, "api-key"); err == nil || err.Error() != ollamaTimeoutError || !errors.Is(err, context.DeadlineExceeded) {
+	_, err := fetchOllamaUsage(ctx, "test-secret")
+	oe, ok := errors.AsType[ollamaError](err)
+	if !ok || oe.code != ollamaTimeoutError || !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("error = %v, want %s wrapping deadline exceeded", err, ollamaTimeoutError)
+	}
+}
+
+// TestOllamaUsageExplicitCancellation covers the timeout/cancellation
+// acceptance criterion's other half: an externally canceled context, not
+// just a fetch that outlives its deadline. Cancellation isn't one of the
+// five failure categories that get a stable ollama error code, so it should
+// surface as bare context.Canceled.
+func TestOllamaUsageExplicitCancellation(t *testing.T) {
+	useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := fetchOllamaUsage(ctx, "test-secret")
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want context.Canceled", err)
+	}
+	if _, ok := errors.AsType[ollamaError](err); ok {
+		t.Errorf("error = %v, should not carry a stable ollama error code", err)
 	}
 }
 
@@ -104,7 +128,7 @@ func TestOllamaProviderPrefersEnvironmentCredential(t *testing.T) {
 
 func TestOllamaReportUsesV1(t *testing.T) {
 	useConfig(t, []string{"ollama"})
-	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"secret":"api-key"}`)); err != nil {
+	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"secret":"test-secret"}`)); err != nil {
 		t.Fatal(err)
 	}
 	oldRegistry := registry
@@ -130,7 +154,7 @@ func TestOllamaReportUsesV1(t *testing.T) {
 	}
 }
 
-func TestOllamaLoginOpensVerifiesAndStoresKey(t *testing.T) {
+func TestOllamaLoginOpensVerifiesAndStoresCredential(t *testing.T) {
 	useConfig(t, nil)
 	useInteractiveLogin(t)
 	useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -163,5 +187,27 @@ func TestOllamaLoginOpensVerifiesAndStoresKey(t *testing.T) {
 	}
 	if providers, err := configuredProviders(); err != nil || len(providers) != 1 || providers[0] != "ollama" {
 		t.Errorf("configured providers after re-login = %v, error = %v", providers, err)
+	}
+}
+
+func TestOllamaLoginRejectsInvalidCredentialWithoutStoring(t *testing.T) {
+	useConfig(t, nil)
+	useInteractiveLogin(t)
+	useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	oldOpenURL := openURL
+	openURL = func(string) error { return nil }
+	t.Cleanup(func() { openURL = oldOpenURL })
+
+	var out, errOut bytes.Buffer
+	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, "2\n"), &out, &errOut); code == 0 {
+		t.Fatalf("login exit = %d, want failure", code)
+	}
+	if _, ok, err := credential("ollama"); err != nil || ok {
+		t.Errorf("ollama credential stored = %v, err = %v", ok, err)
+	}
+	if providers, err := configuredProviders(); err != nil || len(providers) != 0 {
+		t.Errorf("configured providers = %v, error = %v", providers, err)
 	}
 }

@@ -23,24 +23,20 @@ var (
 
 func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	return runCredentialCommand("login", "saved", args, stdin, stdout, stderr, func(p knownProvider) error {
-		if p.name == "ollama" {
-			fmt.Fprintf(stdout, "Opening %s\n", ollamaAPIKeysURL)
-			if err := openURL(ollamaAPIKeysURL); err != nil {
-				return errors.New("could not open Ollama Cloud API-key page")
+		impl := registry[p.name]
+		if preparer, ok := impl.(loginPreparer); ok {
+			if err := preparer.prepareLogin(stdout); err != nil {
+				return err
 			}
 		}
 		value, err := readSecret(stdin, stdout)
 		if err != nil {
 			return err
 		}
-		if p.name == "ollama" {
-			key, err := ollamaKey(value)
-			if err != nil {
-				return err
-			}
+		if verifier, ok := impl.(loginVerifier); ok {
 			verifyCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 			defer cancel()
-			if _, err := fetchOllamaUsage(verifyCtx, key); err != nil {
+			if err := verifier.verifyLogin(verifyCtx, value); err != nil {
 				return err
 			}
 		}

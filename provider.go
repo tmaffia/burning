@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -32,6 +34,18 @@ type usageWindow struct {
 type provider interface {
 	Name() string
 	Usage(ctx context.Context) ([]usageWindow, error)
+}
+
+// loginPreparer lets a provider run a step before its credential prompt,
+// such as opening a page to obtain a credential.
+type loginPreparer interface {
+	prepareLogin(stdout io.Writer) error
+}
+
+// loginVerifier lets a provider validate a newly entered credential before
+// it's stored.
+type loginVerifier interface {
+	verifyLogin(ctx context.Context, value json.RawMessage) error
 }
 
 // registry maps configured provider names to implementations.
@@ -92,9 +106,7 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
 			if errors.Is(results[i].err, context.DeadlineExceeded) {
-				if name == "ollama" {
-					results[i].err = ollamaFailure(ollamaTimeoutError, results[i].err)
-				} else {
+				if _, ok := results[i].err.(ollamaError); !ok {
 					results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
 				}
 			}

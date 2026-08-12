@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -26,25 +28,45 @@ type ollamaProvider struct{}
 func (ollamaProvider) Name() string { return "ollama" }
 
 func (ollamaProvider) Usage(ctx context.Context) ([]usageWindow, error) {
-	key, err := ollamaAPIKey()
+	secret, err := ollamaCredential()
 	if err != nil {
 		return nil, err
 	}
-	return fetchOllamaUsage(ctx, key)
+	return fetchOllamaUsage(ctx, secret)
 }
 
-func ollamaAPIKey() (string, error) {
-	if key := os.Getenv("OLLAMA_API_KEY"); key != "" {
-		return key, nil
+// prepareLogin opens Ollama Cloud's API-key page before the credential prompt.
+func (ollamaProvider) prepareLogin(stdout io.Writer) error {
+	fmt.Fprintf(stdout, "Opening %s\n", ollamaAPIKeysURL)
+	if err := openURL(ollamaAPIKeysURL); err != nil {
+		return errors.New("could not open Ollama Cloud API-key page")
+	}
+	return nil
+}
+
+// verifyLogin checks a newly entered credential against the usage endpoint
+// before it's stored.
+func (ollamaProvider) verifyLogin(ctx context.Context, value json.RawMessage) error {
+	secret, err := ollamaCredentialSecret(value)
+	if err != nil {
+		return err
+	}
+	_, err = fetchOllamaUsage(ctx, secret)
+	return err
+}
+
+func ollamaCredential() (string, error) {
+	if secret := os.Getenv("OLLAMA_API_KEY"); secret != "" {
+		return secret, nil
 	}
 	value, ok, err := credential("ollama")
 	if err != nil || !ok {
 		return "", ollamaFailure(ollamaAuthenticationError, err)
 	}
-	return ollamaKey(value)
+	return ollamaCredentialSecret(value)
 }
 
-func ollamaKey(value json.RawMessage) (string, error) {
+func ollamaCredentialSecret(value json.RawMessage) (string, error) {
 	var credential struct {
 		Secret string `json:"secret"`
 	}
@@ -54,12 +76,12 @@ func ollamaKey(value json.RawMessage) (string, error) {
 	return credential.Secret, nil
 }
 
-func fetchOllamaUsage(ctx context.Context, key string) ([]usageWindow, error) {
+func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ollamaUsageURL, nil)
 	if err != nil {
 		return nil, ollamaFailure(ollamaUnavailableError, err)
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Authorization", "Bearer "+secret)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -82,14 +104,13 @@ func fetchOllamaUsage(ctx context.Context, key string) ([]usageWindow, error) {
 		return nil, ollamaFailure(ollamaUnavailableError, nil)
 	}
 
+	type ollamaLimit struct {
+		Usage *float64 `json:"usage"`
+	}
 	var response struct {
 		Limits struct {
-			Session struct {
-				Usage *float64 `json:"usage"`
-			} `json:"session"`
-			Weekly struct {
-				Usage *float64 `json:"usage"`
-			} `json:"weekly"`
+			Session ollamaLimit `json:"session"`
+			Weekly  ollamaLimit `json:"weekly"`
 		} `json:"limits"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
@@ -109,13 +130,33 @@ func validOllamaUsage(value *float64) bool {
 }
 
 type ollamaError struct {
-	code  string
-	cause error
+	code    string
+	message string
+	cause   error
 }
 
-func (e ollamaError) Error() string { return e.code }
+func (e ollamaError) Error() string { return e.message }
 func (e ollamaError) Unwrap() error { return e.cause }
 
+// ollamaErrorMessage returns the human-readable message for a stable ollama
+// error code, matching the prose contract other providers' errors use.
+func ollamaErrorMessage(code string) string {
+	switch code {
+	case ollamaAuthenticationError:
+		return "authentication failed"
+	case ollamaTimeoutError:
+		return fmt.Sprintf("timeout after %s", fetchTimeout)
+	case ollamaRateLimitedError:
+		return "rate limited"
+	case ollamaUnavailableError:
+		return "unavailable"
+	case ollamaMalformedResponseError:
+		return "malformed response"
+	default:
+		return code
+	}
+}
+
 func ollamaFailure(code string, cause error) error {
-	return ollamaError{code: code, cause: cause}
+	return ollamaError{code: code, message: ollamaErrorMessage(code), cause: cause}
 }
