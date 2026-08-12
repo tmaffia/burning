@@ -38,16 +38,17 @@ func setRegistry(ps ...provider) {
 	}
 }
 
-// useConfig points config loading at a temp dir, optionally writing a config
-// file listing providers. nil providers means no config file exists.
-func useConfig(t *testing.T, providers []string) {
+// useConfig points config and credential loading at a temp dir, returning it,
+// and optionally writes a config file listing providers. nil providers means
+// no config file exists.
+func useConfig(t *testing.T, providers []string) string {
 	t.Helper()
 	dir := t.TempDir()
 	old := userConfigDir
 	userConfigDir = func() (string, error) { return dir, nil }
 	t.Cleanup(func() { userConfigDir = old })
 	if providers == nil {
-		return
+		return dir
 	}
 	b, err := json.Marshal(struct {
 		Providers []string `json:"providers"`
@@ -61,6 +62,7 @@ func useConfig(t *testing.T, providers []string) {
 	if err := os.WriteFile(filepath.Join(dir, "burning", "config.json"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return dir
 }
 
 func TestFullSuccessJSON(t *testing.T) {

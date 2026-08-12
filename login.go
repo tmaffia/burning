@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,98 +13,85 @@ import (
 	"golang.org/x/term"
 )
 
-type loginProvider struct {
-	name  string
-	label string
-}
-
 var (
-	loginProviders = []loginProvider{
-		{name: "openai", label: "OpenAI Codex"},
-		{name: "ollama", label: "Ollama Cloud"},
-	}
 	isTerminal   = term.IsTerminal
 	readPassword = term.ReadPassword
 )
 
 func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	return runCredentialCommand("login", "saved", args, stdin, stdout, stderr, func(p knownProvider) error {
+		value, err := readSecret(stdin, stdout)
+		if err != nil {
+			return err
+		}
+		return storeCredential(ctx, p.name, value)
+	})
+}
+
+func runLogout(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	return runCredentialCommand("logout", "removed", args, stdin, stdout, stderr, func(p knownProvider) error {
+		return removeCredential(ctx, p.name)
+	})
+}
+
+// runCredentialCommand is the shape login and logout share: reject arguments,
+// choose a Provider interactively, apply the change, confirm it.
+func runCredentialCommand(verb, outcome string, args []string, stdin *os.File, stdout, stderr io.Writer, change func(knownProvider) error) int {
 	if len(args) > 0 {
-		fmt.Fprintf(stderr, "burning: login: unexpected argument %q\n", args[0])
+		fmt.Fprintf(stderr, "burning: %s: unexpected argument %q\n", verb, args[0])
 		return 2
 	}
-	provider, err := chooseLoginProvider(stdin, stdout)
+	provider, err := chooseProvider(stdin, stdout)
+	if err == nil {
+		err = change(provider)
+	}
 	if err != nil {
-		fmt.Fprintf(stderr, "burning: login: %v\n", err)
+		fmt.Fprintf(stderr, "burning: %s: %v\n", verb, err)
 		return 2
 	}
+	fmt.Fprintf(stdout, "%s credential %s.\n", provider.label, outcome)
+	return 0
+}
+
+// readSecret prompts for a credential without echoing it and returns the value
+// to store. Errors never carry the credential itself.
+func readSecret(stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	fmt.Fprint(stdout, "Credential: ")
 	secret, err := readPassword(int(stdin.Fd()))
 	fmt.Fprintln(stdout)
 	if err != nil {
-		fmt.Fprintln(stderr, "burning: login: could not read credential")
-		return 2
+		return nil, errors.New("could not read credential")
 	}
 	defer clear(secret)
 	if len(bytes.TrimSpace(secret)) == 0 {
-		fmt.Fprintln(stderr, "burning: login: credential is required")
-		return 2
+		return nil, errors.New("credential is required")
 	}
 	value, err := json.Marshal(struct {
 		Secret string `json:"secret"`
 	}{string(secret)})
 	if err != nil {
-		fmt.Fprintln(stderr, "burning: login: could not store credential")
-		return 2
+		return nil, errors.New("could not store credential")
 	}
-	if err := storeCredential(ctx, provider.name, value); err != nil {
-		fmt.Fprintf(stderr, "burning: login: %v\n", err)
-		return 2
-	}
-	fmt.Fprintf(stdout, "%s credential saved.\n", provider.label)
-	return 0
+	return value, nil
 }
 
-func runLogout(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintf(stderr, "burning: logout: unexpected argument %q\n", args[0])
-		return 2
-	}
-	provider, err := chooseLoginProvider(stdin, stdout)
-	if err != nil {
-		fmt.Fprintf(stderr, "burning: logout: %v\n", err)
-		return 2
-	}
-	if err := removeCredential(ctx, provider.name); err != nil {
-		fmt.Fprintf(stderr, "burning: logout: %v\n", err)
-		return 2
-	}
-	fmt.Fprintf(stdout, "%s credential removed.\n", provider.label)
-	return 0
-}
-
-func chooseLoginProvider(stdin *os.File, stdout io.Writer) (loginProvider, error) {
+func chooseProvider(stdin *os.File, stdout io.Writer) (knownProvider, error) {
 	if !isTerminal(int(stdin.Fd())) {
-		return loginProvider{}, fmt.Errorf("stdin is not a terminal")
+		return knownProvider{}, errors.New("stdin is not a terminal")
 	}
 	fmt.Fprintln(stdout, "Choose a provider:")
-	for i, provider := range loginProviders {
+	for i, provider := range knownProviders {
 		fmt.Fprintf(stdout, "  %d) %s\n", i+1, provider.label)
 	}
 	fmt.Fprint(stdout, "Provider: ")
 	var choice string
 	if _, err := fmt.Fscan(stdin, &choice); err != nil {
-		return loginProvider{}, fmt.Errorf("could not read provider")
+		return knownProvider{}, errors.New("could not read provider")
 	}
-	for i, provider := range loginProviders {
+	for i, provider := range knownProviders {
 		if choice == fmt.Sprint(i+1) || strings.EqualFold(choice, provider.name) {
 			return provider, nil
 		}
 	}
-	return loginProvider{}, fmt.Errorf("unknown provider")
-}
-
-func clear(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	return knownProvider{}, errors.New("unknown provider")
 }

@@ -25,11 +25,11 @@ func credential(provider string) (json.RawMessage, bool, error) {
 	if provider == "" {
 		return nil, false, errors.New("auth: provider is required")
 	}
-	dir, err := authDirectory()
+	path, err := authPath()
 	if err != nil {
 		return nil, false, err
 	}
-	auth, err := readAuth(filepath.Join(dir, authFileName))
+	auth, err := readAuth(path)
 	if err != nil {
 		return nil, false, err
 	}
@@ -67,7 +67,7 @@ func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
-	dir, lock, err := lockAuth(ctx)
+	path, lock, err := lockAuth(ctx)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
 		_ = lock.Close()
 	}()
 
-	auth, err := readAuth(filepath.Join(dir, authFileName))
+	auth, err := readAuth(path)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func mutateCredentials(ctx context.Context, mutate func(*authFile) bool) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
-	return writeAuth(filepath.Join(dir, authFileName), auth)
+	return writeAuth(path, auth)
 }
 
 func authDirectory() (string, error) {
@@ -97,6 +97,17 @@ func authDirectory() (string, error) {
 	return filepath.Join(base, "burning"), nil
 }
 
+// authPath resolves the credential file without creating anything.
+func authPath() (string, error) {
+	dir, err := authDirectory()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, authFileName), nil
+}
+
+// lockAuth creates the owner-only config directory, takes the exclusive lock,
+// and returns the credential file path to operate on.
 func lockAuth(ctx context.Context) (string, *os.File, error) {
 	dir, err := authDirectory()
 	if err != nil {
@@ -119,7 +130,7 @@ func lockAuth(ctx context.Context) (string, *os.File, error) {
 	for {
 		err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 		if err == nil {
-			return dir, lock, nil
+			return filepath.Join(dir, authFileName), lock, nil
 		}
 		if !errors.Is(err, unix.EWOULDBLOCK) {
 			_ = lock.Close()

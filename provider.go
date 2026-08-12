@@ -38,6 +38,21 @@ type provider interface {
 // registry maps configured provider names to implementations.
 var registry = map[string]provider{}
 
+// knownProvider is a Provider Burning ships support for: the name used in
+// config.json, auth.json and registry, plus the label shown to humans.
+type knownProvider struct {
+	name  string
+	label string
+}
+
+// knownProviders is the single list of supported Providers, in menu order.
+// Adding a Provider means adding it here and registering its implementation
+// under the same name.
+var knownProviders = []knownProvider{
+	{name: "openai", label: "OpenAI Codex"},
+	{name: "ollama", label: "Ollama Cloud"},
+}
+
 // fetchTimeout bounds each provider call; providers run concurrently.
 var fetchTimeout = 10 * time.Second
 

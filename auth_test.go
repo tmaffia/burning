@@ -14,15 +14,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func useAuthDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	old := userConfigDir
-	userConfigDir = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { userConfigDir = old })
-	return dir
-}
-
 func interactiveInput(t *testing.T, input string) *os.File {
 	t.Helper()
 	reader, writer, err := os.Pipe()
@@ -50,7 +41,7 @@ func useInteractiveLogin(t *testing.T) {
 }
 
 func TestLoginAndLogoutSelectProvider(t *testing.T) {
-	useAuthDir(t)
+	useConfig(t, nil)
 	useInteractiveLogin(t)
 	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"keep"}`)); err != nil {
 		t.Fatal(err)
@@ -80,7 +71,7 @@ func TestLoginAndLogoutSelectProvider(t *testing.T) {
 }
 
 func TestCredentialStoreRoundTripAndPermissions(t *testing.T) {
-	dir := useAuthDir(t)
+	dir := useConfig(t, nil)
 	want := json.RawMessage(`{"token":"secret"}`)
 	if err := storeCredential(context.Background(), "openai", want); err != nil {
 		t.Fatal(err)
@@ -109,7 +100,7 @@ func TestCredentialStoreRoundTripAndPermissions(t *testing.T) {
 }
 
 func TestCredentialStoreWritesAtomically(t *testing.T) {
-	dir := useAuthDir(t)
+	dir := useConfig(t, nil)
 	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"old"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +122,7 @@ func TestCredentialStoreWritesAtomically(t *testing.T) {
 }
 
 func TestCredentialStoreReplacementAndDeletion(t *testing.T) {
-	useAuthDir(t)
+	useConfig(t, nil)
 	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"old"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +146,7 @@ func TestCredentialStoreReplacementAndDeletion(t *testing.T) {
 }
 
 func TestCredentialStoreCancellationPreservesCredential(t *testing.T) {
-	useAuthDir(t)
+	useConfig(t, nil)
 	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"old"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +163,7 @@ func TestCredentialStoreCancellationPreservesCredential(t *testing.T) {
 }
 
 func TestCredentialStoreCancellationWhileLockedPreservesCredential(t *testing.T) {
-	dir := useAuthDir(t)
+	dir := useConfig(t, nil)
 	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"old"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +189,7 @@ func TestCredentialStoreCancellationWhileLockedPreservesCredential(t *testing.T)
 }
 
 func TestCredentialStoreConcurrentMutations(t *testing.T) {
-	useAuthDir(t)
+	useConfig(t, nil)
 	const count = 20
 	var wg sync.WaitGroup
 	for i := range count {
