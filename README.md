@@ -32,13 +32,24 @@ Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Appli
 
 A missing file means no providers are configured.
 
+## Credentials
+
+```sh
+burning login
+burning logout
+```
+
+Both commands select a Provider interactively. `login` reads the credential
+without echoing it and stores it only in `auth.json` beside `config.json`; the
+directory and credential file are owner-only (`0700` and `0600`).
+
 ## Exit codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | All providers reported usage (or none are configured) |
 | 1 | One or more providers failed |
-| 2 | Fatal error (bad flags, unreadable config) |
+| 2 | The command did not run (bad flags, unreadable config, or a `login`/`logout` that could not proceed — no terminal, unknown Provider, or a `login` missing a credential) |
 
 ## JSON output
 

@@ -38,16 +38,17 @@ func setRegistry(ps ...provider) {
 	}
 }
 
-// useConfig points config loading at a temp dir, optionally writing a config
-// file listing providers. nil providers means no config file exists.
-func useConfig(t *testing.T, providers []string) {
+// useConfig points config and credential loading at a temp dir, returning it,
+// and optionally writes a config file listing providers. nil providers means
+// no config file exists.
+func useConfig(t *testing.T, providers []string) string {
 	t.Helper()
 	dir := t.TempDir()
 	old := userConfigDir
 	userConfigDir = func() (string, error) { return dir, nil }
 	t.Cleanup(func() { userConfigDir = old })
 	if providers == nil {
-		return
+		return dir
 	}
 	b, err := json.Marshal(struct {
 		Providers []string `json:"providers"`
@@ -61,6 +62,7 @@ func useConfig(t *testing.T, providers []string) {
 	if err := os.WriteFile(filepath.Join(dir, "burning", "config.json"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return dir
 }
 
 func TestFullSuccessJSON(t *testing.T) {
@@ -189,6 +191,32 @@ func TestTimeout(t *testing.T) {
 	}
 	if len(doc.Errors) != 1 || !strings.Contains(doc.Errors[0].Message, "timeout after 5ms") {
 		t.Errorf("errors = %+v", doc.Errors)
+	}
+}
+
+// TestCancelStopsFetch proves Ctrl-C reaches the report path, not just
+// login/logout: a canceled context aborts provider fetches instead of waiting
+// out fetchTimeout.
+func TestCancelStopsFetch(t *testing.T) {
+	setRegistry(fakeProvider{name: "openai", delay: 100 * time.Millisecond})
+	useConfig(t, []string{"openai"})
+	old := fetchTimeout
+	fetchTimeout = 5 * time.Second // long enough that only cancellation can end the fetch
+	t.Cleanup(func() { fetchTimeout = old })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	if code := runWithInput(ctx, []string{"--json"}, os.Stdin, &out, &bytes.Buffer{}); code != 1 {
+		t.Fatalf("exit = %d, want 1", code)
+	}
+	var doc jsonReport
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Errors) != 1 || !strings.Contains(doc.Errors[0].Message, "context canceled") {
+		t.Errorf("errors = %+v, want a cancellation error", doc.Errors)
 	}
 }
 

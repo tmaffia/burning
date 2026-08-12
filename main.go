@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"time"
 
 	"golang.org/x/term"
@@ -22,16 +23,22 @@ const helpText = `burning reports coding-agent subscription usage.
 
 Usage:
   burning [--json]
+  burning login
+  burning logout
 
 Flags:
   --json      print the report as JSON schema v1 instead of the human format
   --version   print the version and exit
   --help      show this help
 
+Login and logout select a provider interactively. Credentials are stored beside
+config.json with owner-only permissions.
+
 Exit codes:
   0  all providers reported usage (or none are configured)
   1  one or more providers failed
-  2  fatal error (bad flags, unreadable config)
+  2  the command did not run (bad flags, unreadable config, no terminal,
+     unknown Provider, or a login missing a credential)
 
 Providers are read from $XDG_CONFIG_HOME/burning/config.json
 (~/Library/Application Support/burning/config.json on macOS), e.g.
@@ -43,6 +50,21 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	return runWithInput(ctx, args, os.Stdin, stdout, stderr)
+}
+
+func runWithInput(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "login":
+			return runLogin(ctx, args[1:], stdin, stdout, stderr)
+		case "logout":
+			return runLogout(ctx, args[1:], stdin, stdout, stderr)
+		}
+	}
+
 	fs := flag.NewFlagSet("burning", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, helpText) }
@@ -69,7 +91,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "burning: %v\n", err)
 		return 2
 	}
-	results := fetchAll(context.Background(), names)
+	results := fetchAll(ctx, names)
 	now := time.Now()
 
 	if *asJSON {
