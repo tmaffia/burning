@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 var testNow = time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
@@ -20,16 +21,13 @@ type fakeProvider struct {
 	name    string
 	windows []usageWindow
 	err     error
-	block   bool // waits for the context to expire, simulating a hung provider
+	delay   time.Duration // ignores context, simulating an uncooperative provider
 }
 
 func (f fakeProvider) Name() string { return f.name }
 
-func (f fakeProvider) Usage(ctx context.Context) ([]usageWindow, error) {
-	if f.block {
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}
+func (f fakeProvider) Usage(context.Context) ([]usageWindow, error) {
+	time.Sleep(f.delay)
 	return f.windows, f.err
 }
 
@@ -68,11 +66,11 @@ func useConfig(t *testing.T, providers []string) {
 func TestFullSuccessJSON(t *testing.T) {
 	setRegistry(
 		fakeProvider{name: "openai", windows: []usageWindow{
-			{Name: "session", Duration: 5 * time.Hour, Used: 0.284, ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
-			{Name: "weekly", Duration: 7 * 24 * time.Hour, Used: 0.607, ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
+			{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
+			{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.607), ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
 		}},
 		fakeProvider{name: "ollama", windows: []usageWindow{
-			{Name: "session", Duration: 5 * time.Hour, Used: 0.05},
+			{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.05)},
 		}},
 	)
 	useConfig(t, []string{"openai", "ollama"})
@@ -102,11 +100,11 @@ func TestFullSuccessJSON(t *testing.T) {
 	if sess.Name != "session" || sess.DurationSeconds != 5*3600 {
 		t.Errorf("session = %+v", sess)
 	}
-	if sess.UsedPercent != 0.284*100 {
-		t.Errorf("used_percent = %v, want %v (normalized precision)", sess.UsedPercent, 0.284*100)
+	if sess.UsagePercent != 0.284*100 {
+		t.Errorf("usage_percent = %v, want %v (normalized precision)", sess.UsagePercent, 0.284*100)
 	}
-	if sess.RemainingPercent != (1-0.284)*100 {
-		t.Errorf("remaining_percent = %v", sess.RemainingPercent)
+	if sess.RemainingAllowancePercent != (1-0.284)*100 {
+		t.Errorf("remaining_allowance_percent = %v", sess.RemainingAllowancePercent)
 	}
 	if sess.ResetsAt == nil || sess.RemainingSeconds == nil || *sess.RemainingSeconds <= 0 {
 		t.Errorf("resets_at = %v, remaining_seconds = %v, want set", sess.ResetsAt, sess.RemainingSeconds)
@@ -126,8 +124,8 @@ func TestFullSuccessJSON(t *testing.T) {
 
 func TestHumanReport(t *testing.T) {
 	setRegistry(fakeProvider{name: "openai", windows: []usageWindow{
-		{Name: "session", Duration: 5 * time.Hour, Used: 0.284, ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
-		{Name: "weekly", Duration: 7 * 24 * time.Hour, Used: 0.607, ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
+		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: time.Now().Add(3*time.Hour + 12*time.Minute)},
+		{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.607), ResetsAt: time.Now().Add(4*24*time.Hour + 6*time.Hour)},
 	}})
 	useConfig(t, []string{"openai"})
 
@@ -136,7 +134,7 @@ func TestHumanReport(t *testing.T) {
 		t.Fatalf("exit = %d", code)
 	}
 	got := out.String()
-	for _, want := range []string{"█", "░", "5h", "7d", "28% used", "61% used", "3h12m", "4d6h", "│"} {
+	for _, want := range []string{"█", "░", "5h", "7d", "28% usage", "61% usage", "3h12m", "4d6h", "│"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
@@ -145,7 +143,7 @@ func TestHumanReport(t *testing.T) {
 
 func TestPartialFailure(t *testing.T) {
 	setRegistry(
-		fakeProvider{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Used: 0.5}}},
+		fakeProvider{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.5)}}},
 		fakeProvider{name: "ollama", err: errors.New("boom")},
 	)
 	useConfig(t, []string{"openai", "ollama"})
@@ -175,10 +173,10 @@ func TestPartialFailure(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	setRegistry(fakeProvider{name: "openai", block: true})
+	setRegistry(fakeProvider{name: "openai", delay: 100 * time.Millisecond})
 	useConfig(t, []string{"openai"})
 	old := fetchTimeout
-	fetchTimeout = 50 * time.Millisecond
+	fetchTimeout = 5 * time.Millisecond
 	t.Cleanup(func() { fetchTimeout = old })
 
 	var out bytes.Buffer
@@ -189,7 +187,7 @@ func TestTimeout(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Errors) != 1 || !strings.Contains(doc.Errors[0].Message, "timeout after 50ms") {
+	if len(doc.Errors) != 1 || !strings.Contains(doc.Errors[0].Message, "timeout after 5ms") {
 		t.Errorf("errors = %+v", doc.Errors)
 	}
 }
@@ -264,37 +262,52 @@ func TestBadFlagAndArg(t *testing.T) {
 }
 
 func TestBarEdges(t *testing.T) {
-	if got := bar(0); got != "▕░░░░░░░░░░▏" {
+	if got := bar(usageFromFraction(0)); got != "▕░░░░░░░░░░▏" {
 		t.Errorf("bar(0) = %q, want empty bar", got)
 	}
-	if got := bar(1); got != "▕██████████▏" {
+	if got := bar(usageFromFraction(1)); got != "▕██████████▏" {
 		t.Errorf("bar(1) = %q, want full bar", got)
 	}
-	if got := bar(0.284); got != "▕███░░░░░░░▏" {
+	if got := bar(usageFromFraction(0.284)); got != "▕███░░░░░░░▏" {
 		t.Errorf("bar(0.284) = %q", got)
+	}
+}
+
+func TestUsageNormalization(t *testing.T) {
+	if got := usageFromFraction(-0.1); got.percent() != 0 || got.remainingAllowancePercent() != 100 {
+		t.Errorf("usageFromFraction(-0.1) = %+v", got)
+	}
+	if got := usageFromFraction(1.1); got.percent() != 100 || got.remainingAllowancePercent() != 0 {
+		t.Errorf("usageFromFraction(1.1) = %+v", got)
 	}
 }
 
 func TestRenderHumanWholePercentages(t *testing.T) {
 	res := []providerResult{{name: "openai", windows: []usageWindow{
-		{Name: "session", Duration: 5 * time.Hour, Used: 0.286, ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
+		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.286), ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
 	}}}
 	var b bytes.Buffer
 	renderHuman(&b, res, testNow, 0, false)
-	if got := b.String(); !strings.Contains(got, "29% used") || strings.Contains(got, "28.6") {
-		t.Errorf("human output = %q, want whole-number 29%% used", got)
+	if got := b.String(); !strings.Contains(got, "29% usage") || strings.Contains(got, "28.6") {
+		t.Errorf("human output = %q, want whole-number 29%% usage", got)
 	}
 }
 
 func TestRenderHumanNarrowFallback(t *testing.T) {
 	res := []providerResult{{name: "openai", windows: []usageWindow{
-		{Name: "session", Duration: 5 * time.Hour, Used: 0.284, ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
-		{Name: "weekly", Duration: 7 * 24 * time.Hour, Used: 0.607, ResetsAt: testNow.Add(4*24*time.Hour + 6*time.Hour)},
+		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
+		{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.607), ResetsAt: testNow.Add(4*24*time.Hour + 6*time.Hour)},
 	}}}
 	var b bytes.Buffer
 	renderHuman(&b, res, testNow, 0, false)
-	if wide := b.String(); !strings.Contains(wide, "█") {
+	wide := b.String()
+	if !strings.Contains(wide, "█") {
 		t.Errorf("unconstrained output lost bars:\n%s", wide)
+	}
+	b.Reset()
+	renderHuman(&b, res, testNow, utf8.RuneCountInString(strings.TrimSuffix(wide, "\n")), false)
+	if got := b.String(); !strings.Contains(got, "█") {
+		t.Errorf("output measured in terminal columns lost bars:\n%s", got)
 	}
 	b.Reset()
 	renderHuman(&b, res, testNow, 40, false)
@@ -302,14 +315,14 @@ func TestRenderHumanNarrowFallback(t *testing.T) {
 	if strings.Contains(narrow, "█") {
 		t.Errorf("narrow output still has bars:\n%s", narrow)
 	}
-	if !strings.Contains(narrow, "28% used") {
+	if !strings.Contains(narrow, "28% usage") {
 		t.Errorf("narrow output lost data:\n%s", narrow)
 	}
 }
 
 func TestRenderHumanColors(t *testing.T) {
 	res := []providerResult{
-		{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Used: 0.284}}},
+		{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284)}}},
 		{name: "ollama", err: errors.New("boom")},
 	}
 	var b bytes.Buffer
@@ -326,7 +339,7 @@ func TestRenderHumanColors(t *testing.T) {
 
 func TestRenderJSONExact(t *testing.T) {
 	res := []providerResult{{name: "openai", windows: []usageWindow{
-		{Name: "session", Duration: 5 * time.Hour, Used: 0.284, ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
+		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284), ResetsAt: testNow.Add(3*time.Hour + 12*time.Minute)},
 	}}}
 	var b bytes.Buffer
 	if err := renderJSON(&b, res, testNow); err != nil {
@@ -337,8 +350,8 @@ func TestRenderJSONExact(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := doc.Providers[0].Windows[0]
-	if w.UsedPercent != 0.284*100 || w.RemainingPercent != (1-0.284)*100 {
-		t.Errorf("percents = %v/%v", w.UsedPercent, w.RemainingPercent)
+	if w.UsagePercent != 0.284*100 || w.RemainingAllowancePercent != (1-0.284)*100 {
+		t.Errorf("percents = %v/%v", w.UsagePercent, w.RemainingAllowancePercent)
 	}
 	if w.ResetsAt == nil || !w.ResetsAt.Equal(testNow.Add(3*time.Hour+12*time.Minute)) {
 		t.Errorf("resets_at = %v", w.ResetsAt)

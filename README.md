@@ -3,8 +3,8 @@
 A small CLI for checking coding-agent subscription usage from the terminal or an agent.
 
 ```text
-OpenAI  5h ▕███░░░░░░░▏ 28% used · 3h12m │ 7d ▕██████░░░░▏ 61% used · 4d6h
-Ollama  5h ▕█░░░░░░░░░▏  5% used         │ 7d ▕█░░░░░░░░░▏  5% used
+OpenAI  5h ▕███░░░░░░░▏ 28% usage · 3h12m │ 7d ▕██████░░░░▏ 61% usage · 4d6h
+Ollama  5h ▕█░░░░░░░░░▏  5% usage         │ 7d ▕█░░░░░░░░░▏  5% usage
 ```
 
 ## Planned v0.1
@@ -42,7 +42,7 @@ A missing file means no providers are configured.
 
 ## JSON output
 
-`burning --json` emits schema `burning.usage.v1`: normalized percents at full precision, `resets_at`/`remaining_seconds` only when the provider exposes a reset time, failing providers as structured `errors`, and never ANSI escapes.
+`burning --json` emits schema `burning.usage.v1`: Usage and Remaining Allowance percentages at full normalized precision, `resets_at`/`remaining_seconds` only when the provider exposes a reset time, failing providers as structured `errors`, and never ANSI escapes.
 
 ```json
 {
@@ -55,8 +55,8 @@ A missing file means no providers are configured.
         {
           "name": "session",
           "duration_seconds": 18000,
-          "used_percent": 28.4,
-          "remaining_percent": 71.6,
+          "usage_percent": 28.4,
+          "remaining_allowance_percent": 71.6,
           "resets_at": "2026-08-12T09:12:00Z",
           "remaining_seconds": 11520
         }

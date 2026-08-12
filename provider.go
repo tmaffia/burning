@@ -8,12 +8,24 @@ import (
 	"time"
 )
 
-// usageWindow is one allowance period, e.g. a 5-hour session or a 7-day week.
+// usage is the normalized fraction of an allowance consumed.
+type usage struct {
+	fraction float64
+}
+
+func usageFromFraction(fraction float64) usage {
+	return usage{fraction: min(max(fraction, 0), 1)}
+}
+
+func (u usage) percent() float64                   { return u.fraction * 100 }
+func (u usage) remainingAllowancePercent() float64 { return (1 - u.fraction) * 100 }
+
+// usageWindow represents one provider-defined Usage Window, e.g. a 5-hour session.
 type usageWindow struct {
-	Name     string        // provider-defined identifier, e.g. "session"
-	Duration time.Duration // the window's full duration
-	Used     float64       // fraction of allowance consumed, 0..1
-	ResetsAt time.Time     // when the allowance renews; zero if unknown
+	Name     string
+	Duration time.Duration
+	Usage    usage
+	ResetsAt time.Time // zero if unknown
 }
 
 // provider reports usage for one subscription service. Real providers
@@ -52,11 +64,22 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 			defer wg.Done()
 			pctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 			defer cancel()
-			windows, err := p.Usage(pctx)
-			if errors.Is(err, context.DeadlineExceeded) {
-				err = fmt.Errorf("timeout after %s", fetchTimeout)
+			name := p.Name()
+			// ponytail: a provider ignoring cancellation may leak this goroutine;
+			// isolate providers in processes if that happens in practice.
+			done := make(chan providerResult, 1)
+			go func() {
+				windows, err := p.Usage(pctx)
+				done <- providerResult{name: name, windows: windows, err: err}
+			}()
+			select {
+			case results[i] = <-done:
+			case <-pctx.Done():
+				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
-			results[i] = providerResult{name: p.Name(), windows: windows, err: err}
+			if errors.Is(results[i].err, context.DeadlineExceeded) {
+				results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
+			}
 		}(i, p)
 	}
 	wg.Wait()
