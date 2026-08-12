@@ -1,4 +1,4 @@
-.PHONY: build test vet check e2e fmt clean
+.PHONY: build test vet fmtcheck check e2e fmt clean
 
 build:
 	go build -o burning .
@@ -9,7 +9,10 @@ test:
 vet:
 	go vet ./...
 
-check: test vet
+fmtcheck:
+	@files="$$(gofmt -l .)"; test -z "$$files" || { printf '%s\n' "$$files"; exit 1; }
+
+check: fmtcheck vet test
 
 e2e:
 	go test -count=1 ./...

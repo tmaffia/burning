@@ -22,6 +22,27 @@ burning --json     # machine-readable report
 burning --version  # "dev" unless stamped at build time
 ```
 
+## Install
+
+### Go
+
+```sh
+go install github.com/tmaffia/burning@latest
+```
+
+### Release archive
+
+Download an archive and its `SHA256SUMS` file from the [latest release](https://github.com/tmaffia/burning/releases/latest). Replace `VERSION`, `OS` (`darwin` or `linux`), and `ARCH` (`amd64` or `arm64`) for your machine:
+
+```sh
+VERSION=v0.1.0 OS=darwin ARCH=arm64
+ARCHIVE="burning_${VERSION}_${OS}_${ARCH}.tar.gz"
+curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/${ARCHIVE}"
+curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/SHA256SUMS"
+grep " ${ARCHIVE}$" SHA256SUMS | shasum -a 256 -c -
+tar -xzf "$ARCHIVE"
+```
+
 ## Configuration
 
 Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
@@ -39,7 +60,7 @@ burning login
 burning logout
 ```
 
-Both commands select a Provider interactively. `login` adds that Provider to
+Run `burning login` before your first usage report. Both commands select a Provider interactively. `login` adds that Provider to
 `config.json`. OpenAI Codex login opens a browser for ChatGPT OAuth and stores
 the resulting Credential only in `auth.json` beside `config.json`. Ollama Cloud
 login opens its [API-key page](https://ollama.com/settings/keys), verifies the
@@ -56,6 +77,10 @@ Ollama Cloud Credential for the current invocation.
 | 2 | The command did not run (bad flags, unreadable config, or a `login`/`logout` that could not proceed — no terminal, unknown Provider, or a `login` missing a credential) |
 
 ## JSON output
+
+```sh
+burning --json
+```
 
 `burning --json` emits schema `burning.usage.v1`: Usage and Remaining Allowance percentages at full normalized precision, `resets_at`/`remaining_seconds` only when the provider exposes a reset time, failing providers as structured `errors`, and never ANSI escapes.
 
@@ -94,7 +119,21 @@ go build -ldflags "-X main.version=v0.1.0" -o burning .
 
 The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
 
+## Pi
+
+Install the latest Burning skill package for Pi:
+
+```sh
+pi install git:github.com/tmaffia/burning
+```
+
+The `burning` executable must also be on `PATH`. The skill runs `burning --json` for Usage requests and directs credential setup to `burning login` in your terminal.
+
 ## Development
+
+```sh
+make check
+```
 
 ### End-to-end checks
 

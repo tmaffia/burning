@@ -264,11 +264,15 @@ func TestUnknownProvider(t *testing.T) {
 }
 
 func TestVersionFlag(t *testing.T) {
+	old := version
+	version = "v0.1.0"
+	t.Cleanup(func() { version = old })
+
 	var out, errOut bytes.Buffer
 	if code := run([]string{"--version"}, &out, &errOut); code != 0 {
 		t.Fatalf("exit = %d", code)
 	}
-	if got := out.String(); got != "burning dev\n" {
+	if got := out.String(); got != "burning v0.1.0\n" {
 		t.Errorf("version output = %q", got)
 	}
 }
