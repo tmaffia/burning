@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -28,15 +30,26 @@ type usageWindow struct {
 	ResetsAt time.Time // zero if unknown
 }
 
-// provider reports usage for one subscription service. Real providers
-// (auth, HTTP) arrive in later issues; tests register fakes here.
+// provider reports Usage for one subscription service.
 type provider interface {
 	Name() string
 	Usage(ctx context.Context) ([]usageWindow, error)
 }
 
+// loginPreparer lets a provider run a step before its credential prompt,
+// such as opening a page to obtain a credential.
+type loginPreparer interface {
+	prepareLogin(stdout io.Writer) error
+}
+
+// loginVerifier lets a provider validate a newly entered credential before
+// it's stored.
+type loginVerifier interface {
+	verifyLogin(ctx context.Context, value json.RawMessage) error
+}
+
 // registry maps configured provider names to implementations.
-var registry = map[string]provider{}
+var registry = map[string]provider{"ollama": ollamaProvider{}}
 
 // knownProvider is a Provider Burning ships support for: the name used in
 // config.json, auth.json and registry, plus the label shown to humans.
@@ -93,7 +106,9 @@ func fetchAll(ctx context.Context, names []string) []providerResult {
 				results[i] = providerResult{name: name, err: pctx.Err()}
 			}
 			if errors.Is(results[i].err, context.DeadlineExceeded) {
-				results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
+				if _, ok := results[i].err.(ollamaError); !ok {
+					results[i].err = fmt.Errorf("timeout after %s", fetchTimeout)
+				}
 			}
 		}(i, p)
 	}

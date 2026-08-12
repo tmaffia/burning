@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"golang.org/x/term"
@@ -16,15 +18,32 @@ import (
 var (
 	isTerminal   = term.IsTerminal
 	readPassword = term.ReadPassword
+	openURL      = openBrowser
 )
 
 func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	return runCredentialCommand("login", "saved", args, stdin, stdout, stderr, func(p knownProvider) error {
+		impl := registry[p.name]
+		if preparer, ok := impl.(loginPreparer); ok {
+			if err := preparer.prepareLogin(stdout); err != nil {
+				return err
+			}
+		}
 		value, err := readSecret(stdin, stdout)
 		if err != nil {
 			return err
 		}
-		return storeCredential(ctx, p.name, value)
+		if verifier, ok := impl.(loginVerifier); ok {
+			verifyCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+			defer cancel()
+			if err := verifier.verifyLogin(verifyCtx, value); err != nil {
+				return err
+			}
+		}
+		if err := storeCredential(ctx, p.name, value); err != nil {
+			return err
+		}
+		return configureProvider(p.name)
 	})
 }
 
@@ -69,6 +88,14 @@ func readSecret(stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	return json.Marshal(struct {
 		Secret string `json:"secret"`
 	}{string(secret)})
+}
+
+func openBrowser(url string) error {
+	command := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		command = "open"
+	}
+	return exec.Command(command, url).Start()
 }
 
 func chooseProvider(stdin *os.File, stdout io.Writer) (knownProvider, error) {

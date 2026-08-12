@@ -30,7 +30,7 @@ Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Appli
 {"providers": ["openai", "ollama"]}
 ```
 
-A missing file means no providers are configured.
+A missing file means no providers are configured. `burning login` adds its selected Provider to this list.
 
 ## Credentials
 
@@ -39,9 +39,12 @@ burning login
 burning logout
 ```
 
-Both commands select a Provider interactively. `login` reads the credential
-without echoing it and stores it only in `auth.json` beside `config.json`; the
-directory and credential file are owner-only (`0700` and `0600`).
+Both commands select a Provider interactively. `login` adds that Provider to
+`config.json`. Ollama Cloud login opens its
+[API-key page](https://ollama.com/settings/keys), verifies the entered Credential, and
+stores it only in `auth.json` beside `config.json`; the directory and credential
+file are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides that stored
+Ollama Cloud Credential for the current invocation.
 
 ## Exit codes
 

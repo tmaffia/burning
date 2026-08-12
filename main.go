@@ -31,8 +31,9 @@ Flags:
   --version   print the version and exit
   --help      show this help
 
-Login and logout select a provider interactively. Credentials are stored beside
-config.json with owner-only permissions.
+Login and logout select a provider interactively. Login adds the selected
+Provider to config.json; credentials are stored beside it with owner-only
+permissions.
 
 Exit codes:
   0  all providers reported usage (or none are configured)
