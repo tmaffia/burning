@@ -9,34 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
-
-type e2eWindow struct {
-	Name                      string     `json:"name"`
-	DurationSeconds           int64      `json:"duration_seconds"`
-	UsagePercent              float64    `json:"usage_percent"`
-	RemainingAllowancePercent float64    `json:"remaining_allowance_percent"`
-	ResetsAt                  *time.Time `json:"resets_at"`
-	RemainingSeconds          *int64     `json:"remaining_seconds"`
-}
-
-type e2eProvider struct {
-	Name    string      `json:"name"`
-	Windows []e2eWindow `json:"windows"`
-}
-
-type e2eError struct {
-	Provider string `json:"provider"`
-	Message  string `json:"message"`
-}
-
-type e2eReport struct {
-	Schema      string        `json:"schema"`
-	GeneratedAt time.Time     `json:"generated_at"`
-	Providers   []e2eProvider `json:"providers"`
-	Errors      []e2eError    `json:"errors"`
-}
 
 func buildExecutable(t *testing.T) string {
 	t.Helper()
@@ -85,7 +58,7 @@ func TestExecutableSmoke(t *testing.T) {
 		{
 			name: "JSON report", args: []string{"--json"}, exit: 0,
 			check: func(t *testing.T, stdout, stderr string) {
-				var report e2eReport
+				var report jsonReport
 				if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 					t.Fatal(err)
 				}
@@ -147,7 +120,7 @@ func TestLiveProviders(t *testing.T) {
 		t.Errorf("exit = %d; stdout = %q, stderr = %q", exitCode, stdout, stderr)
 	}
 
-	var report e2eReport
+	var report jsonReport
 	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
 		t.Fatalf("decode live report: %v; stderr = %q", err, stderr)
 	}
