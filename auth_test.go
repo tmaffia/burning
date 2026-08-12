@@ -71,6 +71,61 @@ func TestLoginAndLogoutSelectProvider(t *testing.T) {
 	}
 }
 
+func TestLogoutRemovesProviderAndCredential(t *testing.T) {
+	useConfig(t, []string{"openai", "ollama"})
+	setRegistry(t,
+		fakeProvider{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.5)}}},
+		fakeProvider{name: "ollama", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.1)}}},
+	)
+	useInteractiveLogin(t)
+	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"a"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeCredential(context.Background(), "ollama", json.RawMessage(`{"token":"b"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if code := runWithInput(context.Background(), []string{"logout"}, interactiveInput(t, "1\n"), &out, &errOut); code != 0 {
+		t.Fatalf("logout exit = %d, stderr = %q", code, errOut.String())
+	}
+
+	if _, ok, err := credential("openai"); err != nil || ok {
+		t.Errorf("openai credential exists = %v, err = %v", ok, err)
+	}
+	if _, ok, err := credential("ollama"); err != nil || !ok {
+		t.Errorf("ollama credential exists = %v, err = %v", ok, err)
+	}
+
+	providers, err := configuredProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0] != "ollama" {
+		t.Errorf("configured providers = %v, want [ollama]", providers)
+	}
+
+	var jsonOut bytes.Buffer
+	if code := run([]string{"--json"}, &jsonOut, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("json report exit = %d", code)
+	}
+	var doc jsonReport
+	if err := json.Unmarshal(jsonOut.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Providers) != 1 || doc.Providers[0].Name != "ollama" || len(doc.Errors) != 0 {
+		t.Errorf("providers = %+v, errors = %+v", doc.Providers, doc.Errors)
+	}
+
+	var human bytes.Buffer
+	if code := run(nil, &human, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("human report exit = %d", code)
+	}
+	if strings.Contains(human.String(), "openai") {
+		t.Errorf("human output mentions logged-out provider:\n%s", human.String())
+	}
+}
+
 func TestCredentialStoreRoundTripAndPermissions(t *testing.T) {
 	dir := useConfig(t, nil)
 	want := json.RawMessage(`{"token":"secret"}`)

@@ -55,6 +55,9 @@ func runLogin(ctx context.Context, args []string, stdin *os.File, stdout, stderr
 
 func runLogout(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	return runCredentialCommand("logout", "removed", args, stdin, stdout, stderr, func(p knownProvider) error {
+		if err := deconfigureProvider(p.name); err != nil {
+			return err
+		}
 		return removeCredential(ctx, p.name)
 	})
 }

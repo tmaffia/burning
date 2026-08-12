@@ -42,6 +42,41 @@ func configuredProviders() ([]string, error) {
 	return cfg.Providers, nil
 }
 
+// deconfigureProvider removes provider from the configured list, preserving
+// the order of the others. A provider not listed is a no-op.
+func deconfigureProvider(provider string) error {
+	providers, err := configuredProviders()
+	if err != nil {
+		return err
+	}
+	filtered := providers[:0]
+	found := false
+	for _, configured := range providers {
+		if configured == provider {
+			found = true
+			continue
+		}
+		filtered = append(filtered, configured)
+	}
+	if !found {
+		return nil
+	}
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	b, err := json.Marshal(struct {
+		Providers []string `json:"providers"`
+	}{filtered})
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+	return nil
+}
+
 func configureProvider(provider string) error {
 	providers, err := configuredProviders()
 	if err != nil {
