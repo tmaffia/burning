@@ -3,8 +3,8 @@
 A small CLI for checking coding-agent subscription usage from the terminal or an agent.
 
 ```text
-OpenAI  5h ▕███░░░░░░░▏ 28% used · 3h12m │ 7d ▕██████░░░░▏ 61% used · 4d6h
-Ollama  5h ▕█░░░░░░░░░▏  5% used         │ 7d ▕█░░░░░░░░░▏  5% used
+OpenAI  5h ▕███░░░░░░░▏ 28% usage · 3h12m │ 7d ▕██████░░░░▏ 61% usage · 4d6h
+Ollama  5h ▕█░░░░░░░░░▏  5% usage         │ 7d ▕█░░░░░░░░░▏  5% usage
 ```
 
 ## Planned v0.1
@@ -17,10 +17,62 @@ Ollama  5h ▕█░░░░░░░░░▏  5% used         │ 7d ▕█�
 - A small [Agent Skills](https://agentskills.io/) integration
 
 ```text
-burning
-burning --json
-burning login
-burning logout
+burning            # human report
+burning --json     # machine-readable report
+burning --version  # "dev" unless stamped at build time
+```
+
+## Configuration
+
+Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
+
+```json
+{"providers": ["openai", "ollama"]}
+```
+
+A missing file means no providers are configured.
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All providers reported usage (or none are configured) |
+| 1 | One or more providers failed |
+| 2 | Fatal error (bad flags, unreadable config) |
+
+## JSON output
+
+`burning --json` emits schema `burning.usage.v1`: Usage and Remaining Allowance percentages at full normalized precision, `resets_at`/`remaining_seconds` only when the provider exposes a reset time, failing providers as structured `errors`, and never ANSI escapes.
+
+```json
+{
+  "schema": "burning.usage.v1",
+  "generated_at": "2026-08-12T06:00:00Z",
+  "providers": [
+    {
+      "name": "openai",
+      "windows": [
+        {
+          "name": "session",
+          "duration_seconds": 18000,
+          "usage_percent": 28.4,
+          "remaining_allowance_percent": 71.6,
+          "resets_at": "2026-08-12T09:12:00Z",
+          "remaining_seconds": 11520
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {"provider": "ollama", "message": "timeout after 10s"}
+  ]
+}
+```
+
+## Building
+
+```sh
+go build -ldflags "-X main.version=v0.1.0" -o burning .
 ```
 
 > Burning relies on undocumented provider usage endpoints that may change.

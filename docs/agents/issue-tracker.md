@@ -13,6 +13,15 @@ Issues and specs for this repository live in GitHub Issues. Use the `gh` CLI for
 
 Infer the repository from `git remote -v`; `gh` handles this automatically inside the clone.
 
+## Implementation delivery gate
+
+For work implementing an issue:
+
+- Push the implementation branch and open a pull request against `main`.
+- Include `Closes #<issue>` in the pull request body.
+- End the implementation session with the issue open and the pull request unmerged, then report the pull request URL for human review.
+- Issue closure belongs to GitHub's pull-request merge automation; implementation sessions do not run `gh issue close` or merge their own pull requests.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.**
