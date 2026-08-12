@@ -37,7 +37,8 @@ config.json with owner-only permissions.
 Exit codes:
   0  all providers reported usage (or none are configured)
   1  one or more providers failed
-  2  fatal error (bad flags, unreadable config)
+  2  the command did not run (bad flags, unreadable config, or a login or
+     logout that could not proceed)
 
 Providers are read from $XDG_CONFIG_HOME/burning/config.json
 (~/Library/Application Support/burning/config.json on macOS), e.g.
@@ -90,7 +91,7 @@ func runWithInput(ctx context.Context, args []string, stdin *os.File, stdout, st
 		fmt.Fprintf(stderr, "burning: %v\n", err)
 		return 2
 	}
-	results := fetchAll(context.Background(), names)
+	results := fetchAll(ctx, names)
 	now := time.Now()
 
 	if *asJSON {

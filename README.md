@@ -49,7 +49,7 @@ directory and credential file are owner-only (`0700` and `0600`).
 |------|---------|
 | 0 | All providers reported usage (or none are configured) |
 | 1 | One or more providers failed |
-| 2 | Fatal error (bad flags, unreadable config) |
+| 2 | The command did not run (bad flags, unreadable config, or a `login`/`logout` that could not proceed — no terminal, unknown Provider, missing credential) |
 
 ## JSON output
 

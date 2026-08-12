@@ -19,3 +19,7 @@ _Avoid_: Daily limit, fixed five-hour limit
 **Provider**:
 A subscription service that defines and reports usage allowances. Burning initially supports OpenAI Codex and Ollama Cloud.
 _Avoid_: Model, API vendor
+
+**Credential**:
+The secret a Provider requires before it will report usage. Burning stores one Credential per Provider in its own auth file and never reads one from another agent.
+_Avoid_: API key, token, password

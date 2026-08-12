@@ -192,6 +192,32 @@ func TestTimeout(t *testing.T) {
 	}
 }
 
+// TestCancelStopsFetch proves Ctrl-C reaches the report path, not just
+// login/logout: a canceled context aborts provider fetches instead of waiting
+// out fetchTimeout.
+func TestCancelStopsFetch(t *testing.T) {
+	setRegistry(fakeProvider{name: "openai", delay: 100 * time.Millisecond})
+	useConfig(t, []string{"openai"})
+	old := fetchTimeout
+	fetchTimeout = 5 * time.Second // long enough that only cancellation can end the fetch
+	t.Cleanup(func() { fetchTimeout = old })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	if code := runWithInput(ctx, []string{"--json"}, os.Stdin, &out, &bytes.Buffer{}); code != 1 {
+		t.Fatalf("exit = %d, want 1", code)
+	}
+	var doc jsonReport
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Errors) != 1 || !strings.Contains(doc.Errors[0].Message, "context canceled") {
+		t.Errorf("errors = %+v, want a cancellation error", doc.Errors)
+	}
+}
+
 func TestNoProviders(t *testing.T) {
 	useConfig(t, nil) // no config file
 
