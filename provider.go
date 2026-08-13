@@ -112,6 +112,7 @@ func classifyHTTPStatus(status int) providerErrorCategory {
 var registry = map[string]provider{
 	"openai": openaiProvider{},
 	"ollama": ollamaProvider{},
+	"claude": claudeProvider{},
 }
 
 // knownProvider is a Provider Burning ships support for: the name used in
@@ -127,6 +128,7 @@ type knownProvider struct {
 var knownProviders = []knownProvider{
 	{name: "openai", label: "OpenAI Codex"},
 	{name: "ollama", label: "Ollama Cloud"},
+	{name: "claude", label: "Claude"},
 }
 
 // fetchTimeout bounds each provider call; providers run concurrently.

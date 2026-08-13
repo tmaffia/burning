@@ -17,8 +17,11 @@ A provider-defined period over which an allowance is measured, identified by its
 _Avoid_: Daily limit, fixed five-hour limit
 
 **Provider**:
-A subscription service that defines and reports usage allowances. Burning initially supports OpenAI Codex and Ollama Cloud.
+A subscription service that defines and reports usage allowances. Burning supports OpenAI Codex, Ollama Cloud, and Claude.
 _Avoid_: Model, API vendor
+
+**Claude Provider**:
+The shared Claude subscription allowance consumed across Claude.ai, Claude Desktop, and Claude Code. Burning reports this shared subscription rather than a separate allowance for each surface.
 
 **Credential**:
 The secret a Provider requires before it will report usage. Burning stores one Credential per Provider in its own auth file and never reads one from another agent.

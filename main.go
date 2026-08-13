@@ -43,7 +43,7 @@ Exit codes:
 
 Providers are read from $XDG_CONFIG_HOME/burning/config.json
 (~/Library/Application Support/burning/config.json on macOS), e.g.
-  {"providers": ["openai", "ollama"]}
+  {"providers": ["openai", "ollama", "claude"]}
 `
 
 func main() {
