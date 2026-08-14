@@ -21,9 +21,9 @@ const barCells = 10
 
 // Column widths for windowText; fixed so fields line up across providers.
 const (
-	colDur = 5 // "3h12m"
+	colDur = 6 // "13h27m"
 	colPct = 4 // "100%"
-	colCd  = 5 // "2h20m"
+	colCd  = 6 // "23h59m"
 )
 
 // colWidth is the width of one window column including the bar.
