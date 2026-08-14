@@ -141,8 +141,8 @@ make check
 `make e2e` runs the complete Go suite, then invokes `burning --json` once
 against every configured Provider. It requires configured Providers, working
 Credentials, and network access. It uses the existing configuration and
-Credentials; OpenAI and Claude may refresh their Credentials automatically.
-Login and logout are intentionally excluded.
+Credentials; OpenAI, Claude, and SuperGrok may refresh their Credentials
+automatically. Login and logout are intentionally excluded.
 
 Implementation is tracked in [GitHub Issues](https://github.com/tmaffia/burning/issues).
 
