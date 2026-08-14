@@ -10,13 +10,18 @@ claude       5h ▕██░░░░░░░░▏  20%  7h10m ·     7d ▕�
 
 Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session and weekly windows.
 
+> Burning relies on undocumented provider usage endpoints that may change.
+
 ## Install
 
 ### Go
 
 ```sh
-go install github.com/tmaffia/burning@latest   # install or update
-rm "$(go env GOPATH)/bin/burning"              # uninstall
+go install github.com/tmaffia/burning@latest
+```
+
+```sh
+rm "$(go env GOPATH)/bin/burning"
 ```
 
 ### Release archive
@@ -37,51 +42,35 @@ tar -xzf "$ARCHIVE"
 ```sh
 burning            # human report
 burning --json     # machine-readable report
-burning --version  # "dev" unless stamped at build time
+burning --version
 ```
-
-## Configuration
-
-Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
-
-```json
-{"providers": ["openai", "ollama", "claude", "grok"]}
-```
-
-A missing file means no providers are configured. `burning login` adds its selected Provider to this list.
-
-## Credentials
 
 ```sh
 burning login
 burning logout
 ```
 
-Run `burning login` before your first usage report. Both commands select a Provider interactively. `login` adds that Provider to
-`config.json`. OpenAI Codex, Claude, and SuperGrok login each open a browser for OAuth and
-store the resulting Credential only in `auth.json` beside `config.json`. Claude
-reports the shared subscription allowance consumed across Claude.ai, Claude
-Desktop, and Claude Code. SuperGrok reports the shared weekly SuperGrok pool.
-Ollama Cloud login opens its [API-key page](https://ollama.com/settings/keys),
-verifies the entered Credential, and stores it there too; the directory and
-credential file are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides
-that stored Ollama Cloud Credential for the current invocation.
+Run `burning login` before the first report. Both commands pick a Provider interactively. `login` adds it to `config.json` and stores the Credential in `auth.json` beside it (owner-only `0700`/`0600`). OpenAI Codex, Claude, and SuperGrok use browser OAuth; Ollama Cloud opens its [API-key page](https://ollama.com/settings/keys) and verifies the key. `OLLAMA_API_KEY` overrides the stored Ollama Credential for one run.
 
-## Exit codes
+Providers live in `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
 
-| Code | Meaning |
-|------|---------|
-| 0 | All providers reported usage (or none are configured) |
-| 1 | One or more providers failed |
-| 2 | The command did not run (bad flags, unreadable config, or a `login`/`logout` that could not proceed — no terminal, unknown Provider, or a `login` missing a credential) |
-
-## JSON output
-
-```sh
-burning --json
+```json
+{"providers": ["openai", "ollama", "claude", "grok"]}
 ```
 
-`burning --json` emits schema `burning.usage.v1`: Usage and Remaining Allowance percentages at full normalized precision, `resets_at`/`remaining_seconds` only when the provider exposes a reset time, failing providers as structured `errors`, and never ANSI escapes.
+A missing file means no providers are configured.
+
+Claude reports the shared subscription allowance across Claude.ai, Claude Desktop, and Claude Code. SuperGrok reports the shared weekly SuperGrok pool.
+
+```sh
+burning --help
+```
+
+covers flags and exit codes.
+
+## JSON
+
+`burning --json` emits schema `burning.usage.v1`:
 
 ```json
 {
@@ -108,43 +97,27 @@ burning --json
 }
 ```
 
-## Building
-
-```sh
-go build -ldflags "-X main.version=v0.1.0" -o burning .
-```
-
-> Burning relies on undocumented provider usage endpoints that may change.
-
-The domain vocabulary is in [`CONTEXT.md`](./CONTEXT.md).
+Percentages stay at full normalized precision. `resets_at` / `remaining_seconds` appear only when the provider exposes a reset time. Failures land in `errors`. No ANSI.
 
 ## Agent skill
 
-Install the Burning skill for your agent with the [skills](https://github.com/vercel-labs/skills) CLI:
+Requires the `burning` binary on `PATH`. Install with the [skills](https://github.com/vercel-labs/skills) CLI:
 
 ```sh
-npx skills add tmaffia/burning  # install
-npx skills update burning       # update
-npx skills remove burning       # uninstall
+npx skills add tmaffia/burning
 ```
-
-The `burning` executable must also be on `PATH`. The skill runs `burning --json` for Usage requests and directs credential setup to `burning login` in your terminal.
-
-## Development
 
 ```sh
-make check
+npx skills update burning
 ```
 
-### End-to-end checks
+```sh
+npx skills remove burning
+```
 
-`make e2e` runs the complete Go suite, then invokes `burning --json` once
-against every configured Provider. It requires configured Providers, working
-Credentials, and network access. It uses the existing configuration and
-Credentials; OpenAI, Claude, and SuperGrok may refresh their Credentials
-automatically. Login and logout are intentionally excluded.
+The skill runs `burning --json` and points credential setup at `burning login`.
 
-Implementation is tracked in [GitHub Issues](https://github.com/tmaffia/burning/issues).
+Domain vocabulary: [`CONTEXT.md`](./CONTEXT.md).
 
 ## License
 
