@@ -40,29 +40,17 @@ type grokCredential struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-func newGrokAuthorization(redirectURI, state string) (oauthAuthorization, error) {
-	return newOAuthAuthorization(grokAuthorizeURL, grokClientID, grokScope, redirectURI, state, nil)
-}
-
-func startGrokCallback(state string) (*oauthCallbackServer, error) {
-	callback, err := startOAuthCallback(grokCallbackAddress, "", grokCallbackPath, state, "Grok authentication completed. You can close this window.")
-	if err != nil {
-		return nil, errors.New("could not start Grok login callback")
-	}
-	return callback, nil
-}
-
 func (grokProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
 	state, err := randomURLValue()
 	if err != nil {
 		return nil, err
 	}
-	callback, err := startGrokCallback(state)
+	callback, err := startOAuthCallback(grokCallbackAddress, "", grokCallbackPath, state, "Grok authentication completed. You can close this window.")
 	if err != nil {
-		return nil, err
+		return nil, errors.New("could not start Grok login callback")
 	}
 	defer callback.server.Close()
-	authorization, err := newGrokAuthorization(callback.redirectURI, state)
+	authorization, err := newOAuthAuthorization(grokAuthorizeURL, grokClientID, grokScope, callback.redirectURI, state, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +62,13 @@ func (grokProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer)
 	if err != nil {
 		return nil, err
 	}
-	credential, err := exchangeGrokCode(ctx, code, authorization.verifier, callback.redirectURI)
+	credential, err := requestGrokToken(ctx, url.Values{
+		"grant_type":    {"authorization_code"},
+		"client_id":     {grokClientID},
+		"code":          {code},
+		"code_verifier": {authorization.verifier},
+		"redirect_uri":  {callback.redirectURI},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +117,11 @@ func refreshStoredGrokCredential(ctx context.Context) (grokCredential, error) {
 			refreshed = current
 			return false, nil
 		}
-		refreshed, err = refreshGrokCredential(ctx, current.RefreshToken)
+		refreshed, err = requestGrokToken(ctx, url.Values{
+			"grant_type":    {"refresh_token"},
+			"client_id":     {grokClientID},
+			"refresh_token": {current.RefreshToken},
+		})
 		if err != nil {
 			return false, err
 		}
@@ -146,24 +144,6 @@ func parseGrokCredential(value json.RawMessage) (grokCredential, error) {
 		return grokCredential{}, providerFailure("grok", categoryAuthentication, err)
 	}
 	return cred, nil
-}
-
-func exchangeGrokCode(ctx context.Context, code, verifier, redirectURI string) (grokCredential, error) {
-	return requestGrokToken(ctx, url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {grokClientID},
-		"code":          {code},
-		"code_verifier": {verifier},
-		"redirect_uri":  {redirectURI},
-	})
-}
-
-func refreshGrokCredential(ctx context.Context, refreshToken string) (grokCredential, error) {
-	return requestGrokToken(ctx, url.Values{
-		"grant_type":    {"refresh_token"},
-		"client_id":     {grokClientID},
-		"refresh_token": {refreshToken},
-	})
 }
 
 func requestGrokToken(ctx context.Context, form url.Values) (grokCredential, error) {
@@ -221,14 +201,10 @@ func decodeGrokUsage(body io.Reader) ([]usageWindow, error) {
 				Start string `json:"start"`
 				End   string `json:"end"`
 			} `json:"currentPeriod"`
-			CreditUsagePercent *float64 `json:"creditUsagePercent"`
-			OnDemandCap        struct {
-				Val *float64 `json:"val"`
-			} `json:"onDemandCap"`
-			OnDemandUsed struct {
-				Val *float64 `json:"val"`
-			} `json:"onDemandUsed"`
-			BillingPeriodEnd string `json:"billingPeriodEnd"`
+			CreditUsagePercent *float64  `json:"creditUsagePercent"`
+			OnDemandCap        grokMoney `json:"onDemandCap"`
+			OnDemandUsed       grokMoney `json:"onDemandUsed"`
+			BillingPeriodEnd   string    `json:"billingPeriodEnd"`
 		} `json:"config"`
 	}
 	decoder := json.NewDecoder(body)
@@ -284,13 +260,11 @@ func grokUsagePercent(credit, used, cap *float64) (float64, error) {
 	return 0, nil
 }
 
+type grokMoney struct {
+	Val *float64 `json:"val"`
+}
+
 func parseGrokTime(value string) (time.Time, bool) {
-	if value == "" {
-		return time.Time{}, false
-	}
 	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil || parsed.IsZero() {
-		return time.Time{}, false
-	}
-	return parsed, true
+	return parsed, err == nil && !parsed.IsZero()
 }

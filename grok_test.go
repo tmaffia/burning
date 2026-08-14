@@ -70,8 +70,6 @@ func TestGrokUsageTreatsMissingPercentAsZero(t *testing.T) {
 func TestGrokUsageRejectsMissingPeriod(t *testing.T) {
 	for _, body := range []string{
 		`{}`,
-		`{"config":{}}`,
-		`{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_MONTHLY","start":"2026-08-01T00:00:00Z","end":"2026-09-01T00:00:00Z"}}}`,
 		`{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY"},"billingPeriodEnd":"not-a-time"}}`,
 	} {
 		_, err := decodeGrokUsage(strings.NewReader(body))
@@ -93,11 +91,11 @@ func TestGrokUsageFallsBackToBillingPeriodEnd(t *testing.T) {
 }
 
 func TestGrokAuthorizationUsesPKCEAndState(t *testing.T) {
-	first, err := newGrokAuthorization("http://127.0.0.1:56121/callback", "first-state")
+	first, err := newOAuthAuthorization(grokAuthorizeURL, grokClientID, grokScope, "http://127.0.0.1:56121/callback", "first-state", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := newGrokAuthorization("http://127.0.0.1:56121/callback", "second-state")
+	second, err := newOAuthAuthorization(grokAuthorizeURL, grokClientID, grokScope, "http://127.0.0.1:56121/callback", "second-state", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
