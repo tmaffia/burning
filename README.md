@@ -19,7 +19,7 @@ Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session a
 ```sh
 go install github.com/tmaffia/burning@latest
 ```
-
+#### Uninstall
 ```sh
 rm "$(go env GOPATH)/bin/burning"
 ```
