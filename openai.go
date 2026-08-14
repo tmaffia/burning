@@ -68,13 +68,6 @@ func startOpenAICallback(state string) (*openAICallbackServer, error) {
 	return callback, nil
 }
 
-func callbackURI(address string) string {
-	if openAICallbackAddress == "127.0.0.1:1455" {
-		address = "localhost:1455"
-	}
-	return oauthCallbackURI(address, openAICallbackPath)
-}
-
 // login runs the browser OAuth flow instead of asking the user to paste a
 // credential. The URL stays visible if the automatic browser launch fails.
 func (openaiProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
