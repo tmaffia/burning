@@ -19,15 +19,37 @@ const (
 
 const barCells = 10
 
+// Column widths for windowText; fixed so fields line up across providers.
+const (
+	colDur = 6 // "13h27m"
+	colPct = 4 // "100%"
+	colCd  = 6 // "23h59m"
+)
+
+// colWidth is the width of one window column including the bar.
+const colWidth = colDur + 1 + barCells + 2 + 1 + colPct + 1 + colCd
+
 // renderHuman writes one dense line per provider, e.g.
 //
-//	OpenAI  5h ▕███░░░░░░░▏ 28% usage · 3h12m │ 7d ▕██████░░░░▏ 61% usage · 4d6h
+//	ollama  45m ▕░░░░░░░░░░▏   4%      · 7d ▕██░░░░░░░░▏  19%
+//	openai                     · 7d ▕██████░░░░▏  61%  6d12h
+//	claude   5h ▕██░░░░░░░░▏  20%  7h10m · 7d ▕█░░░░░░░░░▏   8%  5d10h
 //
-// Lines wider than the terminal drop their bars; width <= 0 is unconstrained.
+// Windows share columns by position (session under session, weekly under
+// weekly); a missing window or reset leaves a gap. Lines wider than the
+// terminal drop their bars; width <= 0 is unconstrained.
 func renderHuman(w io.Writer, results []providerResult, now time.Time, width int, color bool) {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No providers configured.")
 		return
+	}
+	cols := 0
+	for _, r := range results {
+		for _, w := range r.windows {
+			if i := windowCol(w); i+1 > cols {
+				cols = i + 1
+			}
+		}
 	}
 	for _, r := range results {
 		switch {
@@ -40,35 +62,61 @@ func renderHuman(w io.Writer, results []providerResult, now time.Time, width int
 		case len(r.windows) == 0:
 			fmt.Fprintf(w, "%-8s no usage windows\n", r.name)
 		default:
-			fmt.Fprintln(w, buildLine(r, now, width, color))
+			fmt.Fprintln(w, buildLine(r, now, width, color, cols))
 		}
 	}
 }
 
-func buildLine(r providerResult, now time.Time, width int, color bool) string {
+func buildLine(r providerResult, now time.Time, width int, color bool, cols int) string {
 	showBars := true
 	if width > 0 {
-		parts := make([]string, len(r.windows))
-		for i, win := range r.windows {
-			parts[i] = windowText(win, now, false, true)
-		}
-		if utf8.RuneCountInString(fmt.Sprintf("%-8s %s", r.name, strings.Join(parts, " │ "))) > width {
+		if utf8.RuneCountInString(line(r, now, cols, false, true)) > width {
 			showBars = false
 		}
 	}
-	parts := make([]string, len(r.windows))
-	for i, win := range r.windows {
-		parts[i] = windowText(win, now, color, showBars)
+	return line(r, now, cols, color, showBars)
+}
+
+// windowCol is the column a window belongs to; providers report session
+// and weekly windows by name.
+func windowCol(win usageWindow) int {
+	switch win.Name {
+	case "weekly":
+		return 1
+	default: // "session" and unknown names
+		return 0
 	}
-	return fmt.Sprintf("%-8s %s", r.name, strings.Join(parts, " │ "))
+}
+
+func line(r providerResult, now time.Time, cols int, color, showBars bool) string {
+	parts := make([]string, cols)
+	blank := strings.Repeat(" ", colWidth)
+	if !showBars {
+		blank = strings.Repeat(" ", colDur+1+colPct+1+colCd)
+	}
+	for i := range parts {
+		parts[i] = blank
+	}
+	for _, win := range r.windows {
+		parts[windowCol(win)] = windowText(win, now, color, showBars)
+	}
+	last := len(parts) - 1
+	for last > 0 && strings.TrimSpace(parts[last]) == "" {
+		last--
+	}
+	return strings.TrimRight(fmt.Sprintf("%-8s %s", r.name, strings.Join(parts[:last+1], " · ")), " ")
 }
 
 func windowText(win usageWindow, now time.Time, color, showBar bool) string {
 	pct := int(math.Round(win.Usage.percent()))
-	dur := fmtDuration(win.Duration)
-	core := fmt.Sprintf("%s %3d%% usage", dur, pct)
+	head := fmt.Sprintf("%*s", colDur, fmtDuration(win.Duration))
 	if showBar {
-		core = fmt.Sprintf("%s %s %3d%% usage", dur, bar(win.Usage), pct)
+		head += " " + bar(win.Usage)
+	}
+	head += fmt.Sprintf(" %*d%%", colPct-1, pct)
+	cd := ""
+	if !win.ResetsAt.IsZero() {
+		cd = fmtDuration(win.ResetsAt.Sub(now))
 	}
 	if color {
 		c := ansiGreen
@@ -78,16 +126,9 @@ func windowText(win usageWindow, now time.Time, color, showBar bool) string {
 		case win.Usage.fraction >= 0.7:
 			c = ansiYellow
 		}
-		core = c + core + ansiReset
+		return c + head + ansiReset + ansiGray + fmt.Sprintf(" %*s", colCd, cd) + ansiReset
 	}
-	if win.ResetsAt.IsZero() {
-		return core
-	}
-	cd := " · " + fmtDuration(win.ResetsAt.Sub(now))
-	if color {
-		cd = ansiGray + cd + ansiReset
-	}
-	return core + cd
+	return head + fmt.Sprintf(" %*s", colCd, cd)
 }
 
 // bar renders a barCells-wide usage bar; 0% usage is empty, 100% is full.
