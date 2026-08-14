@@ -1,6 +1,6 @@
 ---
 name: burning
-description: Reports coding-agent subscription Usage with the Burning CLI. Use when asked about OpenAI Codex, Claude, or Ollama Cloud subscription Usage or Usage Windows.
+description: Reports coding-agent subscription Usage with the Burning CLI. Use when asked about OpenAI Codex, Claude, Ollama Cloud, or SuperGrok subscription Usage or Usage Windows.
 ---
 
 # Burning
