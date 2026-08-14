@@ -5,6 +5,7 @@ A small CLI for checking coding-agent subscription usage from the terminal or an
 ```text
 openai   5h [###.......]  28% usage · 3h12m │ 7d [######....]  61% usage · 4d6h
 ollama   5h [#.........]   5% usage │ 7d [#.........]   5% usage
+claude   5h [##........]  18% usage · 4h6m  │ 7d [####......]  42% usage · 3d1h
 ```
 
 Reports OpenAI Codex, Ollama Cloud, and Claude usage across session and weekly windows.
