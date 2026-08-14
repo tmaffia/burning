@@ -145,7 +145,7 @@ func TestHumanReport(t *testing.T) {
 		t.Fatalf("exit = %d", code)
 	}
 	got := out.String()
-	for _, want := range []string{"█", "░", "5h", "7d", "28% usage", "61% usage", "3h12m", "4d6h", "│"} {
+	for _, want := range []string{"█", "░", "5h", "7d", "28%", "61%", "3h12m", "4d6h", "·"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
@@ -329,8 +329,8 @@ func TestRenderHumanWholePercentages(t *testing.T) {
 	}}}
 	var b bytes.Buffer
 	renderHuman(&b, res, testNow, 0, false)
-	if got := b.String(); !strings.Contains(got, "29% usage") || strings.Contains(got, "28.6") {
-		t.Errorf("human output = %q, want whole-number 29%% usage", got)
+	if got := b.String(); !strings.Contains(got, "29%") || strings.Contains(got, "28.6") {
+		t.Errorf("human output = %q, want whole-number 29%%", got)
 	}
 }
 
@@ -356,7 +356,7 @@ func TestRenderHumanNarrowFallback(t *testing.T) {
 	if strings.Contains(narrow, "█") {
 		t.Errorf("narrow output still has bars:\n%s", narrow)
 	}
-	if !strings.Contains(narrow, "28% usage") {
+	if !strings.Contains(narrow, "28%") {
 		t.Errorf("narrow output lost data:\n%s", narrow)
 	}
 }
