@@ -105,8 +105,8 @@ func TestClaudeLoginStoresCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	callbackURL := parsed.Query().Get("redirect_uri")
-	if callbackURL == "" || !strings.HasPrefix(callbackURL, "http://127.0.0.1:") {
-		t.Fatalf("redirect_uri = %q, want ephemeral loopback callback", callbackURL)
+	if callbackURL != "http://localhost:53692/callback" {
+		t.Fatalf("redirect_uri = %q, want Claude's registered callback", callbackURL)
 	}
 	response, err := http.Get(callbackURL + "?state=" + url.QueryEscape(parsed.Query().Get("state")) + "&code=authorization-code")
 	if err != nil {

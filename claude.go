@@ -14,17 +14,17 @@ import (
 )
 
 const (
-	claudeClientID      = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	claudeScope         = "org:create_api_key user:profile user:inference"
-	claudeCallbackPath  = "/callback"
-	claudeRefreshBefore = time.Minute
+	claudeClientID        = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+	claudeScope           = "org:create_api_key user:profile user:inference"
+	claudeCallbackAddress = "127.0.0.1:53692"
+	claudeCallbackPath    = "/callback"
+	claudeRefreshBefore   = time.Minute
 )
 
 var (
-	claudeAuthorizeURL    = "https://claude.ai/oauth/authorize"
-	claudeTokenURL        = "https://platform.claude.com/v1/oauth/token"
-	claudeUsageURL        = "https://api.anthropic.com/api/oauth/usage"
-	claudeCallbackAddress = "127.0.0.1:0"
+	claudeAuthorizeURL = "https://claude.ai/oauth/authorize"
+	claudeTokenURL     = "https://platform.claude.com/v1/oauth/token"
+	claudeUsageURL     = "https://api.anthropic.com/api/oauth/usage"
 )
 
 type claudeProvider struct{}
@@ -43,7 +43,7 @@ func newClaudeAuthorization(redirectURI, state string) (oauthAuthorization, erro
 }
 
 func startClaudeCallback(state string) (*oauthCallbackServer, error) {
-	callback, err := startOAuthCallback(claudeCallbackAddress, "", claudeCallbackPath, state, "Claude authentication completed. You can close this window.")
+	callback, err := startOAuthCallback(claudeCallbackAddress, "localhost:53692", claudeCallbackPath, state, "Claude authentication completed. You can close this window.")
 	if err != nil {
 		return nil, errors.New("could not start Claude login callback")
 	}
