@@ -5,9 +5,10 @@ A small CLI for checking coding-agent subscription usage from the terminal or an
 ```text
 openai   5h [###.......]  28% usage · 3h12m │ 7d [######....]  61% usage · 4d6h
 ollama   5h [#.........]   5% usage │ 7d [#.........]   5% usage
+claude   5h [##........]  18% usage · 4h6m  │ 7d [####......]  42% usage · 3d1h
 ```
 
-Reports OpenAI Codex and Ollama Cloud usage across session and weekly windows.
+Reports OpenAI Codex, Ollama Cloud, and Claude usage across session and weekly windows.
 
 ## Install
 
@@ -44,7 +45,7 @@ burning --version  # "dev" unless stamped at build time
 Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
 
 ```json
-{"providers": ["openai", "ollama"]}
+{"providers": ["openai", "ollama", "claude"]}
 ```
 
 A missing file means no providers are configured. `burning login` adds its selected Provider to this list.
@@ -57,12 +58,13 @@ burning logout
 ```
 
 Run `burning login` before your first usage report. Both commands select a Provider interactively. `login` adds that Provider to
-`config.json`. OpenAI Codex login opens a browser for ChatGPT OAuth and stores
-the resulting Credential only in `auth.json` beside `config.json`. Ollama Cloud
-login opens its [API-key page](https://ollama.com/settings/keys), verifies the
-entered Credential, and stores it there too; the directory and credential file
-are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides that stored
-Ollama Cloud Credential for the current invocation.
+`config.json`. OpenAI Codex and Claude login each open a browser for OAuth and
+store the resulting Credential only in `auth.json` beside `config.json`. Claude
+reports the shared subscription allowance consumed across Claude.ai, Claude
+Desktop, and Claude Code. Ollama Cloud login opens its [API-key page](https://ollama.com/settings/keys),
+verifies the entered Credential, and stores it there too; the directory and
+credential file are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides
+that stored Ollama Cloud Credential for the current invocation.
 
 ## Exit codes
 
@@ -138,8 +140,8 @@ make check
 `make e2e` runs the complete Go suite, then invokes `burning --json` once
 against every configured Provider. It requires configured Providers, working
 Credentials, and network access. It uses the existing configuration and
-Credentials; OpenAI may refresh its Credential automatically. Login and logout
-are intentionally excluded.
+Credentials; OpenAI and Claude may refresh their Credentials automatically.
+Login and logout are intentionally excluded.
 
 Implementation is tracked in [GitHub Issues](https://github.com/tmaffia/burning/issues).
 

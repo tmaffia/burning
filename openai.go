@@ -2,15 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,144 +45,27 @@ type openAICredential struct {
 	AccountID    string    `json:"account_id"`
 }
 
-type openAIAuthorization struct {
-	verifier string
-	url      string
-}
+type openAIAuthorization = oauthAuthorization
+type openAICallbackServer = oauthCallbackServer
 
 func newOpenAIAuthorization(redirectURI, state string) (openAIAuthorization, error) {
-	verifier, err := randomURLValue()
-	if err != nil {
-		return openAIAuthorization{}, err
-	}
-	endpoint, err := url.Parse(openAIAuthorizeURL)
-	if err != nil {
-		return openAIAuthorization{}, errors.New("invalid OpenAI authorization URL")
-	}
-	query := endpoint.Query()
-	query.Set("response_type", "code")
-	query.Set("client_id", openAIClientID)
-	query.Set("redirect_uri", redirectURI)
-	query.Set("scope", openAIScope)
-	query.Set("code_challenge", pkceChallenge(verifier))
-	query.Set("code_challenge_method", "S256")
-	query.Set("state", state)
-	query.Set("id_token_add_organizations", "true")
-	query.Set("codex_cli_simplified_flow", "true")
-	query.Set("originator", "burning")
-	endpoint.RawQuery = query.Encode()
-	return openAIAuthorization{verifier: verifier, url: endpoint.String()}, nil
-}
-
-func randomURLValue() (string, error) {
-	value := make([]byte, 32)
-	if _, err := rand.Read(value); err != nil {
-		return "", errors.New("could not generate secure login values")
-	}
-	return base64.RawURLEncoding.EncodeToString(value), nil
-}
-
-func pkceChallenge(verifier string) string {
-	hash := sha256.Sum256([]byte(verifier))
-	return base64.RawURLEncoding.EncodeToString(hash[:])
-}
-
-type openAICallbackServer struct {
-	server      *http.Server
-	redirectURI string
-	state       string
-	result      chan openAICallbackResult
-}
-
-type openAICallbackResult struct {
-	code string
-	err  error
+	return newOAuthAuthorization(openAIAuthorizeURL, openAIClientID, openAIScope, redirectURI, state, url.Values{
+		"id_token_add_organizations": {"true"},
+		"codex_cli_simplified_flow":  {"true"},
+		"originator":                 {"burning"},
+	})
 }
 
 func startOpenAICallback(state string) (*openAICallbackServer, error) {
-	listener, err := net.Listen("tcp", openAICallbackAddress)
+	publicAddress := ""
+	if openAICallbackAddress == "127.0.0.1:1455" {
+		publicAddress = "localhost:1455"
+	}
+	callback, err := startOAuthCallback(openAICallbackAddress, publicAddress, openAICallbackPath, state, "OpenAI authentication completed. You can close this window.")
 	if err != nil {
 		return nil, errors.New("could not start OpenAI login callback")
 	}
-	callback := &openAICallbackServer{state: state, result: make(chan openAICallbackResult, 1)}
-	callback.redirectURI = callbackURI(listener.Addr().String())
-	callback.server = &http.Server{Handler: http.HandlerFunc(callback.handle)}
-	go func() { _ = callback.server.Serve(listener) }()
 	return callback, nil
-}
-
-func callbackURI(address string) string {
-	if openAICallbackAddress == "127.0.0.1:1455" {
-		return "http://localhost:1455" + openAICallbackPath
-	}
-	return "http://" + address + openAICallbackPath
-}
-
-func (callback *openAICallbackServer) wait(ctx context.Context) (string, error) {
-	select {
-	case result := <-callback.result:
-		return result.code, result.err
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-}
-
-func (callback *openAICallbackServer) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	if r.URL.Path != openAICallbackPath {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	state, ok := singleCallbackParameter(r.URL.Query(), "state")
-	if !ok || subtle.ConstantTimeCompare([]byte(state), []byte(callback.state)) != 1 {
-		callbackError(w, "State mismatch.")
-		return
-	}
-	if _, canceled := r.URL.Query()["error"]; canceled {
-		if _, ok := singleCallbackParameter(r.URL.Query(), "error"); !ok {
-			callbackError(w, "Invalid callback.")
-			return
-		}
-		if _, hasCode := r.URL.Query()["code"]; hasCode {
-			callbackError(w, "Invalid callback.")
-			return
-		}
-		callbackError(w, "Login cancelled.")
-		callback.deliver(openAICallbackResult{err: errors.New("login cancelled")})
-		return
-	}
-	code, ok := singleCallbackParameter(r.URL.Query(), "code")
-	if !ok {
-		callbackError(w, "Missing authorization code.")
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, "OpenAI authentication completed. You can close this window.")
-	callback.deliver(openAICallbackResult{code: code})
-}
-
-func singleCallbackParameter(values url.Values, name string) (string, bool) {
-	value := values[name]
-	if len(value) != 1 || value[0] == "" {
-		return "", false
-	}
-	return value[0], true
-}
-
-func callbackError(w http.ResponseWriter, message string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusBadRequest)
-	_, _ = io.WriteString(w, message)
-}
-
-func (callback *openAICallbackServer) deliver(result openAICallbackResult) {
-	select {
-	case callback.result <- result:
-	default:
-	}
 }
 
 // login runs the browser OAuth flow instead of asking the user to paste a
@@ -306,23 +185,12 @@ func refreshOpenAICredential(ctx context.Context, refreshToken string) (openAICr
 }
 
 func requestOpenAIToken(ctx context.Context, form url.Values) (openAICredential, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAITokenURL, strings.NewReader(form.Encode()))
+	body, err := postOAuthToken(ctx, "openai", openAITokenURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 	if err != nil {
-		return openAICredential{}, providerFailure("openai", categoryUnavailable, err)
+		return openAICredential{}, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return openAICredential{}, openAIHTTPFailure(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusBadRequest {
-		return openAICredential{}, providerFailure("openai", categoryAuthentication, nil)
-	}
-	if res.StatusCode != http.StatusOK {
-		return openAICredential{}, providerFailure("openai", classifyHTTPStatus(res.StatusCode), nil)
-	}
-	return decodeOpenAIToken(res.Body)
+	defer body.Close()
+	return decodeOpenAIToken(body)
 }
 
 func decodeOpenAIToken(body io.Reader) (openAICredential, error) {
