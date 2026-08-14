@@ -113,6 +113,7 @@ var registry = map[string]provider{
 	"openai": openaiProvider{},
 	"ollama": ollamaProvider{},
 	"claude": claudeProvider{},
+	"grok":   grokProvider{},
 }
 
 // knownProvider is a Provider Burning ships support for: the name used in
@@ -129,6 +130,7 @@ var knownProviders = []knownProvider{
 	{name: "openai", label: "OpenAI Codex"},
 	{name: "ollama", label: "Ollama Cloud"},
 	{name: "claude", label: "Claude"},
+	{name: "grok", label: "Grok"},
 }
 
 // fetchTimeout bounds each provider call; providers run concurrently.

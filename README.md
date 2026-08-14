@@ -8,7 +8,7 @@ openai                                   ·     7d ▕██████░░�
 claude       5h ▕██░░░░░░░░▏  20%  7h10m ·     7d ▕█░░░░░░░░░▏   8%  5d10h
 ```
 
-Reports OpenAI Codex, Ollama Cloud, and Claude usage across session and weekly windows.
+Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session and weekly windows.
 
 ## Install
 
@@ -45,7 +45,7 @@ burning --version  # "dev" unless stamped at build time
 Providers are read from `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
 
 ```json
-{"providers": ["openai", "ollama", "claude"]}
+{"providers": ["openai", "ollama", "claude", "grok"]}
 ```
 
 A missing file means no providers are configured. `burning login` adds its selected Provider to this list.
@@ -58,10 +58,11 @@ burning logout
 ```
 
 Run `burning login` before your first usage report. Both commands select a Provider interactively. `login` adds that Provider to
-`config.json`. OpenAI Codex and Claude login each open a browser for OAuth and
+`config.json`. OpenAI Codex, Claude, and SuperGrok login each open a browser for OAuth and
 store the resulting Credential only in `auth.json` beside `config.json`. Claude
 reports the shared subscription allowance consumed across Claude.ai, Claude
-Desktop, and Claude Code. Ollama Cloud login opens its [API-key page](https://ollama.com/settings/keys),
+Desktop, and Claude Code. SuperGrok reports the shared weekly SuperGrok pool.
+Ollama Cloud login opens its [API-key page](https://ollama.com/settings/keys),
 verifies the entered Credential, and stores it there too; the directory and
 credential file are owner-only (`0700` and `0600`). `OLLAMA_API_KEY` overrides
 that stored Ollama Cloud Credential for the current invocation.
@@ -140,8 +141,8 @@ make check
 `make e2e` runs the complete Go suite, then invokes `burning --json` once
 against every configured Provider. It requires configured Providers, working
 Credentials, and network access. It uses the existing configuration and
-Credentials; OpenAI and Claude may refresh their Credentials automatically.
-Login and logout are intentionally excluded.
+Credentials; OpenAI, Claude, and SuperGrok may refresh their Credentials
+automatically. Login and logout are intentionally excluded.
 
 Implementation is tracked in [GitHub Issues](https://github.com/tmaffia/burning/issues).
 

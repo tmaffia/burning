@@ -17,7 +17,7 @@ A provider-defined period over which an allowance is measured, identified by its
 _Avoid_: Daily limit, fixed five-hour limit
 
 **Provider**:
-A subscription service that defines and reports usage allowances. Burning supports OpenAI Codex, Ollama Cloud, and Claude.
+A subscription service that defines and reports usage allowances. Burning supports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok.
 _Avoid_: Model, API vendor
 
 **Claude Provider**:
