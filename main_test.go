@@ -361,6 +361,40 @@ func TestRenderHumanNarrowFallback(t *testing.T) {
 	}
 }
 
+// TestRenderHumanColumnAlignment proves the weekly column lands at the same
+// character position across providers even when one provider has no session
+// window (and thus a gap in that row instead of a shifted column).
+func TestRenderHumanColumnAlignment(t *testing.T) {
+	res := []providerResult{
+		{name: "openai", windows: []usageWindow{
+			{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.61)},
+		}},
+		{name: "claude", windows: []usageWindow{
+			{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.2), ResetsAt: testNow.Add(7*time.Hour + 10*time.Minute)},
+			{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(0.08), ResetsAt: testNow.Add(5*24*time.Hour + 10*time.Hour)},
+		}},
+	}
+	var b bytes.Buffer
+	renderHuman(&b, res, testNow, 0, false)
+	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2:\n%s", len(lines), b.String())
+	}
+	runeCol := func(s, substr string) int {
+		i := strings.LastIndex(s, substr) // weekly is the rightmost column in both rows
+		if i < 0 {
+			return -1
+		}
+		return utf8.RuneCountInString(s[:i])
+	}
+	if i, j := runeCol(lines[0], "·"), runeCol(lines[1], "·"); i < 0 || i != j {
+		t.Errorf("weekly separator not aligned across rows:\n%q\n%q", lines[0], lines[1])
+	}
+	if i, j := runeCol(lines[0], "▕"), runeCol(lines[1], "▕"); i < 0 || i != j {
+		t.Errorf("weekly bar not aligned across rows:\n%q\n%q", lines[0], lines[1])
+	}
+}
+
 func TestRenderHumanColors(t *testing.T) {
 	res := []providerResult{
 		{name: "openai", windows: []usageWindow{{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(0.284)}}},
