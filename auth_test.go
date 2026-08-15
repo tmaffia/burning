@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,151 @@ func useInteractiveLogin(t *testing.T) {
 	t.Cleanup(func() {
 		isTerminal, readPassword = oldTerminal, oldPassword
 	})
+}
+
+func TestLoginCancelAtProviderPrompt(t *testing.T) {
+	useConfig(t, nil)
+	useInteractiveLogin(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = writer.Close()
+		_ = reader.Close()
+	})
+
+	var out, errOut bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- runWithInput(ctx, []string{"login"}, reader, &out, &errOut)
+	}()
+	time.AfterFunc(20*time.Millisecond, cancel)
+	select {
+	case code := <-done:
+		if code != 2 {
+			t.Fatalf("exit = %d, want 2", code)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("stderr = %q, want empty", errOut.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("login did not return after cancel")
+	}
+}
+
+func TestLogoutCancelAtProviderPrompt(t *testing.T) {
+	useConfig(t, []string{"openai"})
+	useInteractiveLogin(t)
+	if err := storeCredential(context.Background(), "openai", json.RawMessage(`{"token":"keep"}`)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = writer.Close()
+		_ = reader.Close()
+	})
+
+	var out, errOut bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- runWithInput(ctx, []string{"logout"}, reader, &out, &errOut)
+	}()
+	time.AfterFunc(20*time.Millisecond, cancel)
+	select {
+	case code := <-done:
+		if code != 2 {
+			t.Fatalf("exit = %d, want 2", code)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("stderr = %q, want empty", errOut.String())
+		}
+		if _, ok, err := credential("openai"); err != nil || !ok {
+			t.Errorf("openai credential exists = %v, err = %v", ok, err)
+		}
+		if providers, err := configuredProviders(); err != nil || len(providers) != 1 || providers[0] != "openai" {
+			t.Errorf("configured providers = %v, err = %v", providers, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("logout did not return after cancel")
+	}
+}
+
+func TestLoginCancelAtCredentialPrompt(t *testing.T) {
+	useConfig(t, nil)
+	setRegistry(t, fakeProvider{name: "openai"})
+	oldTerminal, oldPassword := isTerminal, readPassword
+	isTerminal = func(int) bool { return true }
+	blocked := make(chan struct{})
+	readPassword = func(int) ([]byte, error) {
+		<-blocked
+		return nil, errors.New("unread")
+	}
+	t.Cleanup(func() {
+		close(blocked)
+		isTerminal, readPassword = oldTerminal, oldPassword
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var out, errOut bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- runWithInput(ctx, []string{"login"}, interactiveInput(t, "1\n"), &out, &errOut)
+	}()
+	time.AfterFunc(20*time.Millisecond, cancel)
+	select {
+	case code := <-done:
+		if code != 2 {
+			t.Fatalf("exit = %d, want 2", code)
+		}
+		if errOut.Len() != 0 {
+			t.Errorf("stderr = %q, want empty", errOut.String())
+		}
+		if _, ok, err := credential("openai"); err != nil || ok {
+			t.Errorf("openai credential exists = %v, err = %v", ok, err)
+		}
+		if providers, err := configuredProviders(); err != nil || len(providers) != 0 {
+			t.Errorf("configured providers = %v, err = %v", providers, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("login did not return after cancel")
+	}
+}
+
+func TestLoginClosedStdinStillReportsReadFailure(t *testing.T) {
+	useConfig(t, nil)
+	useInteractiveLogin(t)
+	var out, errOut bytes.Buffer
+	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, ""), &out, &errOut); code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+	if !strings.Contains(errOut.String(), "could not read provider") {
+		t.Errorf("stderr = %q", errOut.String())
+	}
+}
+
+func TestLoginClosedCredentialStillReportsReadFailure(t *testing.T) {
+	useConfig(t, nil)
+	setRegistry(t, fakeProvider{name: "openai"})
+	oldTerminal, oldPassword := isTerminal, readPassword
+	isTerminal = func(int) bool { return true }
+	readPassword = func(int) ([]byte, error) { return nil, errors.New("eof") }
+	t.Cleanup(func() { isTerminal, readPassword = oldTerminal, oldPassword })
+	var out, errOut bytes.Buffer
+	if code := runWithInput(context.Background(), []string{"login"}, interactiveInput(t, "1\n"), &out, &errOut); code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+	if !strings.Contains(errOut.String(), "could not read credential") {
+		t.Errorf("stderr = %q", errOut.String())
+	}
 }
 
 func TestLoginAndLogoutSelectProvider(t *testing.T) {

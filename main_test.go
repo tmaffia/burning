@@ -34,7 +34,7 @@ func (f fakeProvider) Usage(context.Context) ([]usageWindow, error) {
 
 // login exercises the shared pasted-credential path.
 func (f fakeProvider) login(ctx context.Context, stdin *os.File, stdout io.Writer) (json.RawMessage, error) {
-	return readSecret(stdin, stdout)
+	return readSecret(ctx, stdin, stdout)
 }
 
 func setRegistry(t *testing.T, ps ...provider) {

@@ -34,7 +34,7 @@ func (ollamaProvider) login(ctx context.Context, stdin *os.File, stdout io.Write
 	if err := openURL(ollamaAPIKeysURL); err != nil {
 		return nil, errors.New("could not open Ollama Cloud API-key page")
 	}
-	value, err := readSecret(stdin, stdout)
+	value, err := readSecret(ctx, stdin, stdout)
 	if err != nil {
 		return nil, err
 	}
