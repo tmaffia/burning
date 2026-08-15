@@ -270,13 +270,17 @@ func normalizeClaudeWindow(name string, duration time.Duration, limit claudeUsag
 	if utilization == nil {
 		utilization = limit.Percent // Current API responses call this field percent.
 	}
-	if utilization == nil || *utilization < 0 || *utilization > 100 || limit.ResetsAt == nil || limit.ResetsAt.IsZero() {
+	if utilization == nil || *utilization < 0 || *utilization > 100 {
 		return usageWindow{}, providerFailure("claude", categoryMalformedResponse, nil)
+	}
+	var resetsAt time.Time
+	if limit.ResetsAt != nil {
+		resetsAt = *limit.ResetsAt
 	}
 	return usageWindow{
 		Name:     name,
 		Duration: duration,
 		Usage:    usageFromFraction(*utilization / 100),
-		ResetsAt: *limit.ResetsAt,
+		ResetsAt: resetsAt,
 	}, nil
 }
