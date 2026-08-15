@@ -277,3 +277,23 @@ func TestClaudeUsageNormalizesSharedWindows(t *testing.T) {
 		t.Errorf("weekly = %+v", got)
 	}
 }
+
+func TestClaudeUsageAllowsIdleSessionWithoutReset(t *testing.T) {
+	useClaudeEndpoints(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"limits":[{"kind":"session","percent":0,"resets_at":null,"is_active":false},{"kind":"weekly_all","percent":11,"resets_at":"2026-08-19T11:00:00.038834+00:00"}]}`)
+	})
+
+	windows, err := fetchClaudeUsage(context.Background(), claudeCredential{AccessToken: "access-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(windows) != 2 {
+		t.Fatalf("windows = %+v", windows)
+	}
+	if got := windows[0]; got.Name != "session" || got.Usage.percent() != 0 || !got.ResetsAt.IsZero() {
+		t.Errorf("session = %+v", got)
+	}
+	if got := windows[1]; got.Name != "weekly" || got.Usage.percent() != 11 || !got.ResetsAt.Equal(time.Date(2026, 8, 19, 11, 0, 0, 38834000, time.UTC)) {
+		t.Errorf("weekly = %+v", got)
+	}
+}
