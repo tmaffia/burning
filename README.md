@@ -14,63 +14,31 @@ Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session a
 
 ## Install
 
-### Go
-
 ```sh
 go install github.com/tmaffia/burning@latest
 ```
-#### Uninstall
-```sh
-rm "$(go env GOPATH)/bin/burning"
-```
 
-### Release archive
-
-Download an archive and its `SHA256SUMS` file from the [latest release](https://github.com/tmaffia/burning/releases/latest). Replace `VERSION`, `OS` (`darwin` or `linux`), and `ARCH` (`amd64` or `arm64`) for your machine:
-
-```sh
-VERSION=v0.1.0 OS=darwin ARCH=arm64
-ARCHIVE="burning_${VERSION}_${OS}_${ARCH}.tar.gz"
-curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/${ARCHIVE}"
-curl -LO "https://github.com/tmaffia/burning/releases/download/${VERSION}/SHA256SUMS"
-grep " ${ARCHIVE}$" SHA256SUMS | shasum -a 256 -c -
-tar -xzf "$ARCHIVE"
-```
+Binary releases are available on [GitHub](https://github.com/tmaffia/burning/releases).
 
 ## Usage
 
 ```sh
 burning            # human report
-burning --json     # machine-readable report
-burning --version
-```
-
-```sh
-burning login
+burning --json     # machine report
+burning login      # setup credentials
 burning logout
 ```
 
-Run `burning login` before the first report. Both commands pick a Provider interactively. `login` adds it to `config.json` and stores the Credential in `auth.json` beside it (owner-only `0700`/`0600`). OpenAI Codex, Claude, and SuperGrok use browser OAuth; Ollama Cloud opens its [API-key page](https://ollama.com/settings/keys) and verifies the key. `OLLAMA_API_KEY` overrides the stored Ollama Credential for one run.
+Run `burning login` first. Providers are configured in `$XDG_CONFIG_HOME/burning/config.json`.
 
-Providers live in `$XDG_CONFIG_HOME/burning/config.json` (`~/Library/Application Support/burning/config.json` on macOS):
-
-```json
-{"providers": ["openai", "ollama", "claude", "grok"]}
-```
-
-A missing file means no providers are configured.
-
-Claude reports the shared subscription allowance across Claude.ai, Claude Desktop, and Claude Code. SuperGrok reports the shared weekly SuperGrok pool.
-
-```sh
-burning --help
-```
-
-covers flags and exit codes.
+`burning --help` for flags and exit codes.
 
 ## JSON
 
-`burning --json` emits schema `burning.usage.v1`:
+`burning --json` emits `burning.usage.v1`:
+
+<details>
+<summary>Example output</summary>
 
 ```json
 {
@@ -96,26 +64,15 @@ covers flags and exit codes.
   ]
 }
 ```
-
-Percentages stay at full normalized precision. `resets_at` / `remaining_seconds` appear only when the provider exposes a reset time. Failures land in `errors`. No ANSI.
+</details>
 
 ## Agent skill
 
-Requires the `burning` binary on `PATH`. Install with the [skills](https://github.com/vercel-labs/skills) CLI:
+Requires `burning` on `PATH`. Install via [skills](https://github.com/vercel-labs/skills):
 
 ```sh
 npx skills add tmaffia/burning
 ```
-
-```sh
-npx skills update burning
-```
-
-```sh
-npx skills remove burning
-```
-
-The skill runs `burning --json` and points credential setup at `burning login`.
 
 Domain vocabulary: [`CONTEXT.md`](./CONTEXT.md).
 
