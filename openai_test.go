@@ -190,6 +190,53 @@ func TestOpenAILoginExchangesCallbackAfterBrowserLaunchFailure(t *testing.T) {
 	}
 }
 
+func TestOpenAILoginCancelDuringCallbackWait(t *testing.T) {
+	useConfig(t, nil)
+	useInteractiveLogin(t)
+	oldAddress, oldOpenURL := openAICallbackAddress, openURL
+	openAICallbackAddress = "127.0.0.1:0"
+	t.Cleanup(func() {
+		openAICallbackAddress, openURL = oldAddress, oldOpenURL
+	})
+	browserURL := make(chan string, 1)
+	openURL = func(url string) error {
+		browserURL <- url
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var output, stderr bytes.Buffer
+	result := make(chan int, 1)
+	go func() {
+		result <- runWithInput(ctx, []string{"login"}, interactiveInput(t, "1\n"), &output, &stderr)
+	}()
+	select {
+	case <-browserURL:
+	case code := <-result:
+		t.Fatalf("login exit = %d before opening a browser flow; stderr = %q", code, stderr.String())
+	case <-time.After(time.Second):
+		t.Fatal("login did not open a browser flow")
+	}
+	cancel()
+	select {
+	case code := <-result:
+		if code != 2 {
+			t.Fatalf("exit = %d, want 2; stderr = %q", code, stderr.String())
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("stderr = %q, want empty", stderr.String())
+		}
+		if _, ok, err := credential("openai"); err != nil || ok {
+			t.Errorf("openai credential exists = %v, err = %v", ok, err)
+		}
+		if providers, err := configuredProviders(); err != nil || len(providers) != 0 {
+			t.Errorf("configured providers = %v, err = %v", providers, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("login did not return after cancel")
+	}
+}
+
 func TestOpenAITokenUsesIDTokenClaimsAndExpiry(t *testing.T) {
 	const expiresAt = 1781276043
 	credential, err := decodeOpenAIToken(strings.NewReader(`{"id_token":"` + testOpenAIIDToken("account-id", expiresAt) + `","access_token":"opaque-access-token","refresh_token":"rotated-refresh"}`))
