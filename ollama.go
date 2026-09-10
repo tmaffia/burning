@@ -98,19 +98,17 @@ func fetchOllamaUsage(ctx context.Context, secret string) ([]usageWindow, error)
 	}
 	var response struct {
 		Limits struct {
-			Session ollamaLimit `json:"session"`
-			Weekly  ollamaLimit `json:"weekly"`
+			Monthly ollamaLimit `json:"monthly"`
 		} `json:"limits"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
 		return nil, providerFailure("ollama", categoryMalformedResponse, err)
 	}
-	if !validOllamaUsage(response.Limits.Session.Usage) || !validOllamaUsage(response.Limits.Weekly.Usage) {
+	if !validOllamaUsage(response.Limits.Monthly.Usage) {
 		return nil, providerFailure("ollama", categoryMalformedResponse, nil)
 	}
 	return []usageWindow{
-		{Name: "session", Duration: 5 * time.Hour, Usage: usageFromFraction(*response.Limits.Session.Usage)},
-		{Name: "weekly", Duration: 7 * 24 * time.Hour, Usage: usageFromFraction(*response.Limits.Weekly.Usage)},
+		{Name: "monthly", Duration: 30 * 24 * time.Hour, Usage: usageFromFraction(*response.Limits.Monthly.Usage)},
 	}, nil
 }
 

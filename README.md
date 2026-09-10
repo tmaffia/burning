@@ -3,12 +3,12 @@
 A small CLI for checking coding-agent subscription usage from the terminal or an agent.
 
 ```text
-ollama      45m ▕░░░░░░░░░░▏   4%        ·     7d ▕██░░░░░░░░▏  19%
+ollama      30d ▕██░░░░░░░░▏  20%
 openai                                   ·     7d ▕██████░░░░▏  61%  6d12h
 claude       5h ▕██░░░░░░░░▏  20%  7h10m ·     7d ▕█░░░░░░░░░▏   8%  5d10h
 ```
 
-Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session and weekly windows.
+Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session, weekly, and monthly windows.
 
 > Burning relies on undocumented provider usage endpoints that may change.
 

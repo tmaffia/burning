@@ -31,21 +31,18 @@ func TestOllamaUsage(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer test-secret" {
 				t.Errorf("Authorization = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"limits":{"session":{"usage":0.25,"models":"ignored"},"weekly":{"usage":0.75}},"activity":{"cost":"ignored"}}`))
+			_, _ = w.Write([]byte(`{"activity":{"cost":"ignored"},"limits":{"monthly":{"usage":0.25,"models":[{"name":"glm-5.3-flash","request_count":39}]}}}`))
 		})
 
 		windows, err := fetchOllamaUsage(context.Background(), "test-secret")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(windows) != 2 {
+		if len(windows) != 1 {
 			t.Fatalf("windows = %+v", windows)
 		}
-		if got := windows[0]; got.Name != "session" || got.Duration != 5*time.Hour || got.Usage.percent() != 25 || !got.ResetsAt.IsZero() {
-			t.Errorf("session = %+v", got)
-		}
-		if got := windows[1]; got.Name != "weekly" || got.Duration != 7*24*time.Hour || got.Usage.percent() != 75 || !got.ResetsAt.IsZero() {
-			t.Errorf("weekly = %+v", got)
+		if got := windows[0]; got.Name != "monthly" || got.Duration != 30*24*time.Hour || got.Usage.percent() != 25 || !got.ResetsAt.IsZero() {
+			t.Errorf("monthly = %+v", got)
 		}
 	})
 
@@ -59,8 +56,8 @@ func TestOllamaUsage(t *testing.T) {
 		{"rate limited", http.StatusTooManyRequests, "", providerErrorCode("ollama", categoryRateLimited)},
 		{"unavailable", http.StatusServiceUnavailable, "", providerErrorCode("ollama", categoryUnavailable)},
 		{"malformed body", http.StatusOK, "{}", providerErrorCode("ollama", categoryMalformedResponse)},
-		{"out of range", http.StatusOK, `{"limits":{"session":{"usage":1.1},"weekly":{"usage":0}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
-		{"negative usage", http.StatusOK, `{"limits":{"session":{"usage":-0.1},"weekly":{"usage":0}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
+		{"out of range", http.StatusOK, `{"limits":{"monthly":{"usage":1.1}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
+		{"negative usage", http.StatusOK, `{"limits":{"monthly":{"usage":-0.1}}}`, providerErrorCode("ollama", categoryMalformedResponse)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +116,7 @@ func TestOllamaProviderPrefersEnvironmentCredential(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer environment-key" {
 			t.Errorf("Authorization = %q", got)
 		}
-		_, _ = w.Write([]byte(`{"limits":{"session":{"usage":0},"weekly":{"usage":0}}}`))
+		_, _ = w.Write([]byte(`{"limits":{"monthly":{"usage":0}}}`))
 	})
 	if _, err := (ollamaProvider{}).Usage(context.Background()); err != nil {
 		t.Fatal(err)
@@ -135,7 +132,7 @@ func TestOllamaReportUsesV1(t *testing.T) {
 	registry = map[string]provider{"ollama": ollamaProvider{}}
 	t.Cleanup(func() { registry = oldRegistry })
 	useOllamaServer(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"limits":{"session":{"usage":0.25},"weekly":{"usage":0.75}}}`))
+		_, _ = w.Write([]byte(`{"limits":{"monthly":{"usage":0.25}}}`))
 	})
 
 	var out, errOut bytes.Buffer
@@ -146,11 +143,11 @@ func TestOllamaReportUsesV1(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Providers) != 1 || len(report.Providers[0].Windows) != 2 {
+	if len(report.Providers) != 1 || len(report.Providers[0].Windows) != 1 {
 		t.Fatalf("report = %+v", report)
 	}
-	if got := report.Providers[0].Windows[0]; got.DurationSeconds != 5*60*60 || got.UsagePercent != 25 || got.ResetsAt != nil || got.RemainingSeconds != nil {
-		t.Errorf("session = %+v", got)
+	if got := report.Providers[0].Windows[0]; got.DurationSeconds != 30*24*60*60 || got.UsagePercent != 25 || got.ResetsAt != nil || got.RemainingSeconds != nil {
+		t.Errorf("monthly = %+v", got)
 	}
 }
 
@@ -161,7 +158,7 @@ func TestOllamaLoginOpensVerifiesAndStoresCredential(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
 			t.Errorf("Authorization = %q", got)
 		}
-		_, _ = w.Write([]byte(`{"limits":{"session":{"usage":0},"weekly":{"usage":0}}}`))
+		_, _ = w.Write([]byte(`{"limits":{"monthly":{"usage":0}}}`))
 	})
 	oldOpenURL := openURL
 	openURL = func(url string) error {
