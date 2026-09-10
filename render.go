@@ -31,12 +31,13 @@ const colWidth = colDur + 1 + barCells + 2 + 1 + colPct + 1 + colCd
 
 // renderHuman writes one dense line per provider, e.g.
 //
-//	ollama  45m ▕░░░░░░░░░░▏   4%      · 7d ▕██░░░░░░░░▏  19%
+//	ollama   30d ▕██░░░░░░░░▏  20%
 //	openai                     · 7d ▕██████░░░░▏  61%  6d12h
 //	claude   5h ▕██░░░░░░░░▏  20%  7h10m · 7d ▕█░░░░░░░░░▏   8%  5d10h
 //
-// Windows share columns by position (session under session, weekly under
-// weekly); a missing window or reset leaves a gap. Lines wider than the
+// Windows share columns by position (weekly under weekly; everything else,
+// e.g. session or monthly, under the first column); a missing window or
+// reset leaves a gap. Lines wider than the
 // terminal drop their bars; width <= 0 is unconstrained.
 func renderHuman(w io.Writer, results []providerResult, now time.Time, width int, color bool) {
 	if len(results) == 0 {
@@ -77,8 +78,8 @@ func buildLine(r providerResult, now time.Time, width int, color bool, cols int)
 	return line(r, now, cols, color, showBars)
 }
 
-// windowCol is the column a window belongs to; providers report session
-// and weekly windows by name.
+// windowCol is the column a window belongs to; only "weekly" gets its own
+// column, every other window name (session, monthly, ...) shares the first.
 func windowCol(win usageWindow) int {
 	switch win.Name {
 	case "weekly":
