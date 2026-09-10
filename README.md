@@ -8,7 +8,7 @@ openai                                   ·     7d ▕██████░░�
 claude       5h ▕██░░░░░░░░▏  20%  7h10m ·     7d ▕█░░░░░░░░░▏   8%  5d10h
 ```
 
-Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session and weekly windows.
+Reports OpenAI Codex, Ollama Cloud, Claude, and SuperGrok usage across session, weekly, and monthly windows.
 
 > Burning relies on undocumented provider usage endpoints that may change.
 
